@@ -44,6 +44,62 @@ ifdef SINGLE_PRECISION
 CPPFLAGS += -DPARKIND1_SINGLE
 endif
 
+# Flags to test optimized code, to be described in a paper. These include
+# - Optimized two-stream kernels
+# - Optimized expm and other matrix kernels used by SPARTACUS
+# - Batching of cloudy layers to improve vectorization in TripleClouds and SPARTACUS
+# - Aerosol optimizations
+# - declare number of g-points (inner dimension) at compile time, beneficial when NG is small   
+# - other things
+# do make PROFILE=gfortran SINGLE_PRECISION=1 ..
+# .. OPTIM_CODE=2 NG_SW=32 NG_LW=32 (for full optimizations when using 32-term ECCKD models)
+# .. OPTIM_CODE=1 (refactored solvers but original two-stream and matrix exponential kernels)
+ifdef NG_SW
+CPPFLAGS += -DNG_SW=$(NG_SW)
+endif
+ifdef NG_LW
+CPPFLAGS += -DNG_LW=$(NG_LW)
+endif
+ifdef OPTIM_CODE
+# CPPFLAGS += -DOPTIM_CODE
+CPPFLAGS += -DOPTIM_CODE=$(OPTIM_CODE)
+endif
+
+# ------------- NEW FOR ECRAD+RRTMGP-------------- 
+
+# BLAS library: requisite for RRTMGP-NN
+ifeq ($(BLASLIB),blis)
+BLAS_INCLUDE = -I$(BLAS_DIR)/include/blis
+LIBS_BLAS    = $(BLAS_DIR)/lib/libblis.a -lm -lpthread 
+else ifeq ($(BLASLIB),blis-amd)
+BLAS_INCLUDE  = -I$(BLAS_DIR)/include
+LIBS_BLAS     = $(BLAS_DIR)/lib/libblis-mt.a -lm -lpthread 
+else ifeq ($(BLASLIB),openblas)
+LIBS_BLAS     = -lopenblas 
+else ifeq ($(BLASLIB),mkl)
+#BLAS_INCLUDE  += -I${MKLROOT}/include
+BLAS_INCLUDE  = -I"${MKLROOT}/include"
+#LIBS_BLAS     = -L${MKLROOT}/lib/intel64 -lpthread -lm -ldl
+LIBS_BLAS     =  -L${MKLROOT}/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl
+endif
+
+# Use the General Purpose Timing Library (GPTL)?
+ifeq ($(GPTL_TIMING),1)
+CPPFLAGS += -DUSE_TIMING
+TIMING_INCLUDE = -I$(TIME_DIR)/include
+LDFLAGS += -L$(TIME_DIR)/lib -Wl,-rpath=$(TIME_DIR)/lib 
+LIBS_TIMING = -lgptl # -rdynamic  
+
+# Use GPTL with PAPI enabled to estimate computational intensity
+else ifeq ($(GPTL_TIMING),2) # only tested to work with gcc, other compilers probably need different flags
+# GPTL + PAPI 
+CPPFLAGS += -DUSE_TIMING  -DUSE_PAPI
+TIMING_INCLUDE = -I$(TIME_DIR)/include 
+LDFLAGS  += -L$(TIME_DIR)/lib -Wl,-rpath=$(TIME_DIR)/lib 
+LIBS_TIMING = -lpthread -lgptl -rdynamic -lpapi
+# LIBS_TIMING      += -lgptl -lpapi
+endif
+
 # If PRINT_ENTRAPMENT_DATA=1 was given on the "make" command line
 # then the SPARTACUS shortwave solver will write data to fort.101 and
 # fort.102
@@ -64,9 +120,9 @@ endif
 # Consolidate flags
 export FC
 export FCFLAGS = $(WARNFLAGS) $(BASICFLAGS) $(CPPFLAGS) -I../include \
-	$(OPTFLAGS) $(DEBUGFLAGS) $(NETCDF_INCLUDE) $(OMPFLAG)
+	$(OPTFLAGS) $(DEBUGFLAGS) $(BLAS_INCLUDE)  $(NETCDF_INCLUDE) $(TIMING_INCLUDE) $(OMPFLAG)
 export LIBS    = $(LDFLAGS) -L../lib -lradiation -lutilities \
-	-lifsrrtm -lifsaux $(FCLIBS) $(NETCDF_LIB) $(OMPFLAG)
+	-lifsrrtm -ldrhook -lifsaux  -lrrtmgp -lneural  -lstdc++ $(FCLIBS) $(LIBS_BLAS)  $(NETCDF_LIB) $(LIBS_TIMING) $(OMPFLAG)
 
 # Do we include Dr Hook from ECMWF's fiat library?
 ifdef FIATDIR
@@ -94,19 +150,21 @@ help:
 	@echo "Other possible arguments are:"
 	@echo "  DEBUG=1              Compile with debug settings on and optimizations off"
 	@echo "  SINGLE_PRECISION=1   Compile with single precision"
+	@echo "  OPTIM_CODE=2         Compile with fully optimized version of TripleClouds, SPARTACUS and aerosol optics code
+	@echo "  NG_SW=32 NG_LW=32    Compile with explicit spectral dimension to allow compiler to optimize short loops, in this case for 32-term ECCKD models
 	@echo "  FIATDIR=/my/path     Compile with Dr Hook, specifying the directory containing lib/libfiat.so and module/fiat/yomhook.mod"
 	@echo "  test                 Run test cases in test directory"
 	@echo "  clean                Remove all compiled files"
 
 ifndef FIATDIR
-build: directories libifsaux libdummydrhook libutilities libifsrrtm \
+build: directories libifsaux  libdummydrhook libutilities libifsrrtm librrtmgp \
 	libradiation driver ifsdriver symlinks
 libradiation libutilities: libdummydrhook
 else
 # Note that if we are using Dr Hook from the fiat library we don't
 # want to create mod/yomhook.mod as this can sometimes be found before
 # the one in the fiat directory leading to an error at link stage
-build: directories libifsaux libutilities libifsrrtm libradiation \
+build: directories libifsaux libutilities libifsrrtm librrtmgp libradiation \
 	driver ifsdriver symlinks
 endif
 
@@ -140,13 +198,16 @@ libutilities: libifsaux
 libifsrrtm: libifsaux
 	cd ifsrrtm && $(MAKE)
 
+librrtmgp:
+	cd rrtmgp-nn && $(MAKE)
+
 libradiation: libutilities libifsaux
 	cd radiation && $(MAKE)
 
-driver: libifsaux libifsrrtm libutilities libradiation
+driver: libifsaux libifsrrtm librrtmgp libutilities libradiation
 	cd driver && $(MAKE) driver
 
-ifsdriver: libifsaux libifsrrtm libutilities libradiation libifs
+ifsdriver: libifsaux libifsrrtm librrtmgp libutilities libradiation libifs
 	cd driver && $(MAKE) ifs_driver
 
 test_programs: driver
@@ -175,6 +236,7 @@ clean-tests:
 	cd test/ckdmip && $(MAKE) clean
 
 clean-toplevel:
+	cd rrtmgp-nn && $(MAKE) clean
 	cd radiation && $(MAKE) clean
 	cd driver && $(MAKE) clean
 
@@ -186,7 +248,7 @@ clean-utilities:
 	cd ifs && $(MAKE) clean
 
 clean-mods:
-	rm -f mod/*.mod
+	rm -f mod/*.mod mod/*__genmod.f90 ifsaux/*.mod ifsaux/*__genmod.f90
 
 clean-symlinks:
 	rm -f practical/ecrad practical/data
@@ -194,6 +256,6 @@ clean-symlinks:
 clean-autosaves:
 	rm -f *~ .gitignore~ */*~ */*/*~
 
-.PHONY: all build help deps clean-deps libifsaux libdummydrhook libutilities libifsrrtm \
+.PHONY: all build help deps clean-deps libifsaux libdummydrhook libutilities libifsrrtm librrtmgp \
 	libradiation driver symlinks clean clean-toplevel test test_ifs ifsdriver \
 	test_i3rc clean-tests clean-utilities clean-mods clean-symlinks

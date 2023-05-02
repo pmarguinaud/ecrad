@@ -31,6 +31,7 @@ module ecrad_driver_config
      ! Parallel settings
      logical :: do_parallel
      integer :: nblocksize ! Number of columns processed at once
+     logical :: block_derived_types
 
      ! Override values from the radiation_override namelist (mostly
      ! related to clouds): these will override any values in the
@@ -189,6 +190,7 @@ contains
 
     ! Parallel settings
     logical :: do_parallel
+    logical :: block_derived_types
     integer :: nblocksize
 
     logical :: do_save_inputs, do_save_aerosol_optics, do_save_net_fluxes, &
@@ -228,10 +230,11 @@ contains
          &  ch4_scaling, o2_scaling, cfc11_scaling, cfc12_scaling, &
          &  hcfc22_scaling, no2_scaling, n2o_scaling, ccl4_scaling, &
          &  vmr_suffix_str, experiment_name, do_write_double_precision, &
-         &  sw_diag_wavelength_bound, sw_diag_file_name
+         &  sw_diag_wavelength_bound, sw_diag_file_name, block_derived_types
 
     ! Default values
     do_parallel = .true.
+    block_derived_types = .false.
     do_save_inputs = .false.
     do_save_aerosol_optics = .false.
     do_save_net_fluxes = .false.
@@ -307,6 +310,7 @@ contains
 
     ! Copy namelist data into configuration object
     this%do_parallel = do_parallel
+    this%block_derived_types = block_derived_types
     this%do_save_inputs = do_save_inputs
     this%do_save_aerosol_optics = do_save_aerosol_optics
     this%do_save_net_fluxes = do_save_net_fluxes

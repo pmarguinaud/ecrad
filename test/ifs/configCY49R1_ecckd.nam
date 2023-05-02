@@ -9,13 +9,14 @@
 !
 &radiation_driver
 do_parallel              = true,   ! Use OpenMP parallelization?
-nblocksize               = 80,      ! Number of columns to process per thread
+nblocksize               = 8,      ! Number of columns to process per thread
+block_derived_types      = true,   ! NEW: block derived types in OMP loop for more realistic timings
 do_save_inputs           = false,   ! Save inputs in "inputs.nc"?
 ! Verbosity level: 0=none, 1=warning, 2=info, 3=progress, 4=detailed, 5=debug
 iverbose    	   	= 2,
 istartcol               = 0,      ! Use full range of columns by default
 iendcol                 = 0,
-nrepeat                 = 1,
+nrepeat                 = 10,
 cloud_separation_scale_toa = 14000.0,
 cloud_separation_scale_surface = 2500.0,
 cloud_separation_scale_power = 3.5,
@@ -57,7 +58,7 @@ sw_entrapment_name      = "Explicit",     ! Zero, Edge-only, Explicit, Non-fract
 iverbose    	   	= 1, 
 iverbosesetup  	   	= 2, 
 use_aerosols		= true,           ! Include aerosols in radiation calculations?
-do_save_spectral_flux   = true,           ! Save spectral fluxes in output file?
+do_save_spectral_flux   = false,           ! Save spectral fluxes in output file?
 do_save_gpoint_flux     = false,           ! Save fluxes per g-point in output file?
 do_lw_derivatives       = true,            ! Hogan-Bozzo style derivatives for approx updates
 gas_model_name          = "ECCKD",     ! Gas model

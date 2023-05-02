@@ -568,8 +568,8 @@ contains
 
               ! Apply maximum cloud optical depth for stability in the
               ! 3D case
-              if (od_region(jg,jreg) > config%max_cloud_od) then
-                od_region(jg,jreg) = config%max_cloud_od
+              if (od_region(jg,jreg) > config%max_cloud_od_lw) then
+                od_region(jg,jreg) = config%max_cloud_od_lw
               end if
 
             end do
@@ -701,6 +701,12 @@ contains
           solution_diff(1:ng3D,1:2*nreg) = - solution_diff(1:ng3D,1:2*nreg) 
           solution0(1:ng3D,1:2*nreg) = solve_vec(ng,ng3D,2*nreg,Gamma_z1, &
                &  solution_diff-planck_top)
+
+          ! Additional security on elements fed to matrix exponential
+          ! in single precision
+          if (jprb <= 4) then
+            Gamma_z1 = min(Gamma_z1, 22.0_jprb)
+          end if
 
           ! Compute the matrix exponential of Gamma_z1, returning the
           ! result in-place

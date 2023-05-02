@@ -14,6 +14,7 @@ CHANGENAM = ../common/change_namelist.sh
 #CONFIG = configCY47R3.nam
 CONFIG = configCY49R1.nam
 CONFIG_ECCKD = configCY49R1_ecckd.nam
+CONFIG_RRTMGP = configRRTMGP.nam
 
 # Typing "make" will run radiation scheme on IFS profiles
 all: test
@@ -156,6 +157,30 @@ test_ecckd_tc_noaer:
 	$(CHANGENAM) $(CONFIG_ECCKD) config_ecckd_tc_noaer.nam \
 		use_aerosols=false 
 	$(DRIVER) config_ecckd_tc_noaer.nam $(INPUT).nc $(INPUT)_ecckd_tc_noaer_out.nc
+
+#  RRTMGP gas optics, McICA
+test_rrtmgp:
+	$(DRIVER) $(CONFIG_RRTMGP) $(INPUT).nc $(INPUT)_rrtmgp_default_out.nc
+
+#  RRTMGP gas optics with TripleClouds
+test_rrtmgp_tc:
+	$(CHANGENAM) $(CONFIG_RRTMGP) config_rrtmgp_tc.nam \
+		sw_solver_name='"Tripleclouds"' lw_solver_name='"Tripleclouds"' \
+		overlap_scheme_name='"Exp-Ran"'
+	$(DRIVER) config_rrtmgp_tc.nam $(INPUT).nc $(INPUT)_rrtmgp_tc_out.nc
+
+test_rrtmgp-nn_tc:
+	$(CHANGENAM) $(CONFIG_RRTMGP) config_rrtmgp-nn_tc.nam \
+		sw_solver_name='"Tripleclouds"' lw_solver_name='"Tripleclouds"' \
+		overlap_scheme_name='"Exp-Ran"' gas_model_name='"RRTMGP-NN"'
+	$(DRIVER) config_rrtmgp-nn_tc.nam $(INPUT).nc $(INPUT)_rrtmgp-nn_tc_out.nc
+	
+# RRTMGP with SPARTACUS
+test_rrtmgp_spartacus:
+	$(CHANGENAM) $(CONFIG_RRTMGP) config_rrtmgp_spartacus.nam \
+		sw_solver_name='"SPARTACUS"' lw_solver_name='"SPARTACUS"' \
+		do_3d_effects="true" overlap_scheme_name='"Exp-Ran"' 
+	$(DRIVER) config_rrtmgp_spartacus.nam $(INPUT).nc $(INPUT)_rrtmgp_spartacus_out.nc
 
 # Profiling
 TAG = default

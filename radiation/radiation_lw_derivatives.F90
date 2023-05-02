@@ -36,11 +36,28 @@ module radiation_lw_derivatives
 
   public
 
+  ! Allow size of inner dimension (number of g-points) to be known at compile time if NG_LW is defined
+#ifdef NG_LW
+  integer, parameter, private :: ng = NG_LW
+#else
+#define ng ng_lw_in
+#endif
+
+#ifdef OPTIM_CODE
+#define nregions 3
+#endif 
+
+#ifdef nregions
+  integer, parameter :: nreg = nregions
+#else
+#define nreg nreg_in
+#endif
+
 contains
 
   !---------------------------------------------------------------------
   ! Calculation for the Independent Column Approximation
-  subroutine calc_lw_derivatives_ica(ng, nlev, icol, transmittance, flux_up_surf, lw_derivatives)
+  subroutine calc_lw_derivatives_ica(ng_lw_in, nlev, icol, transmittance, flux_up_surf, lw_derivatives)
 
     use parkind1, only           : jprb
     use yomhook,  only           : lhook, dr_hook, jphook
@@ -48,7 +65,7 @@ contains
     implicit none
 
     ! Inputs
-    integer,    intent(in) :: ng   ! number of spectral intervals
+    integer,    intent(in) :: ng_lw_in   ! number of spectral intervals
     integer,    intent(in) :: nlev ! number of levels
     integer,    intent(in) :: icol ! Index of column for output
     real(jprb), intent(in) :: transmittance(ng,nlev)
@@ -85,7 +102,7 @@ contains
 
   !---------------------------------------------------------------------
   ! Calculation for the Independent Column Approximation
-  subroutine modify_lw_derivatives_ica(ng, nlev, icol, transmittance, &
+  subroutine modify_lw_derivatives_ica(ng_lw_in, nlev, icol, transmittance, &
        &                               flux_up_surf, weight, lw_derivatives)
 
     use parkind1, only           : jprb
@@ -94,7 +111,7 @@ contains
     implicit none
 
     ! Inputs
-    integer,    intent(in) :: ng   ! number of spectral intervals
+    integer,    intent(in) :: ng_lw_in   ! number of spectral intervals
     integer,    intent(in) :: nlev ! number of levels
     integer,    intent(in) :: icol ! Index of column for output
     real(jprb), intent(in) :: transmittance(ng,nlev)
@@ -135,7 +152,7 @@ contains
 
   !---------------------------------------------------------------------
   ! Calculation for solvers involving multiple regions and matrices
-  subroutine calc_lw_derivatives_matrix(ng, nlev, nreg, icol, transmittance, &
+  subroutine calc_lw_derivatives_matrix(ng_lw_in, nlev, nreg_in, icol, transmittance, &
        &                                u_matrix, flux_up_surf, lw_derivatives)
 
     use parkind1, only           : jprb
@@ -146,9 +163,9 @@ contains
     implicit none
 
     ! Inputs
-    integer,    intent(in) :: ng   ! number of spectral intervals
+    integer,    intent(in) :: ng_lw_in   ! number of spectral intervals
     integer,    intent(in) :: nlev ! number of levels
-    integer,    intent(in) :: nreg ! number of regions
+    integer,    intent(in) :: nreg_in ! number of regions
     integer,    intent(in) :: icol ! Index of column for output
     real(jprb), intent(in) :: transmittance(ng,nreg,nreg,nlev)
     real(jprb), intent(in) :: u_matrix(nreg,nreg,nlev+1) ! Upward overlap matrix
@@ -160,8 +177,11 @@ contains
     ! Rate of change of spectral flux at a given height with respect
     ! to the surface value
     real(jprb) :: lw_derivatives_g_reg(ng,nreg)
-
-    integer    :: jlev
+#ifdef OPTIM_CODE
+    real(jprb), dimension(ng,nreg) :: lw_deriv_old, lw_deriv_old2
+    real(jprb) :: sum_tmp
+#endif
+    integer    :: jlev, jg
 
     real(jphook) :: hook_handle
 
@@ -176,18 +196,55 @@ contains
 
     ! Move up through the atmosphere computing the derivatives at each
     ! half-level
-    do jlev = nlev,1,-1
-      ! Compute effect of overlap at half-level jlev+1, yielding
-      ! derivatives just above that half-level
-      lw_derivatives_g_reg = singlemat_x_vec(ng,ng,nreg,u_matrix(:,:,jlev+1),lw_derivatives_g_reg)
+#ifdef OPTIM_CODE
+    if (nreg==3) then 
 
-      ! Compute effect of transmittance of layer jlev, yielding
-      ! derivatives just below the half-level above (jlev)
-      lw_derivatives_g_reg = mat_x_vec(ng,ng,nreg,transmittance(:,:,:,jlev),lw_derivatives_g_reg)
+      do jlev = nlev,1,-1
 
-      lw_derivatives(icol, jlev) = sum(lw_derivatives_g_reg)
-    end do
+        lw_deriv_old = lw_derivatives_g_reg
+        sum_tmp = 0.0_jprb
 
+        associate(A=>u_matrix(:,:,jlev+1), b=>lw_deriv_old, C=>lw_deriv_old2, &
+          T=>transmittance(:,:,:,jlev), lw_deriv=>lw_derivatives_g_reg)
+          !$omp simd reduction(+:sum_tmp)
+          do jg = 1, ng   
+            ! Compute effect of overlap at half-level jlev+1, yielding
+            ! derivatives just above that half-level
+            C(jg,1) = A(1,1)*b(jg,1) + A(1,2)*b(jg,2) + A(1,3)*b(jg,3) 
+            C(jg,2) = A(2,1)*b(jg,1) + A(2,2)*b(jg,2) + A(2,3)*b(jg,3) 
+            C(jg,3) = A(3,1)*b(jg,1) + A(3,2)*b(jg,2) + A(3,3)*b(jg,3) 
+
+            ! Compute effect of transmittance of layer jlev, yielding
+            ! derivatives just below the half-level above (jlev)
+            lw_deriv(jg,1) = T(jg,1,1)*C(jg,1) + T(jg,1,2)*C(jg,2) + T(jg,1,3)*C(jg,3)
+            lw_deriv(jg,2) = T(jg,2,1)*C(jg,1) + T(jg,2,2)*C(jg,2) + T(jg,2,3)*C(jg,3)
+            lw_deriv(jg,3) = T(jg,3,1)*C(jg,1) + T(jg,3,2)*C(jg,2) + T(jg,3,3)*C(jg,3)
+
+            sum_tmp =  sum_tmp + lw_deriv(jg,1) + lw_deriv(jg,2) + lw_deriv(jg,3)
+          end do
+
+        end associate
+
+        lw_derivatives(icol, jlev) = sum_tmp
+
+      end do 
+
+    else 
+#endif
+      do jlev = nlev,1,-1
+        ! Compute effect of overlap at half-level jlev+1, yielding
+        ! derivatives just above that half-level
+        lw_derivatives_g_reg = singlemat_x_vec(ng,ng,nreg,u_matrix(:,:,jlev+1),lw_derivatives_g_reg)
+
+        ! Compute effect of transmittance of layer jlev, yielding
+        ! derivatives just below the half-level above (jlev)
+        lw_derivatives_g_reg = mat_x_vec(ng,ng,nreg,transmittance(:,:,:,jlev),lw_derivatives_g_reg)
+
+        lw_derivatives(icol, jlev) = sum(lw_derivatives_g_reg)
+      end do
+#ifdef OPTIM_CODE
+    end if
+#endif
     if (lhook) call dr_hook('radiation_lw_derivatives:calc_lw_derivatives_matrix',1,hook_handle)
 
   end subroutine calc_lw_derivatives_matrix
@@ -197,7 +254,7 @@ contains
   ! Calculation for solvers involving multiple regions but no 3D
   ! effects: the difference from calc_lw_derivatives_matrix is that transmittance
   ! has one fewer dimensions
-  subroutine calc_lw_derivatives_region(ng, nlev, nreg, icol, transmittance, &
+  subroutine calc_lw_derivatives_region(ng_lw_in, nlev, nreg_in, icol, transmittance, &
        &                                u_matrix, flux_up_surf, lw_derivatives)
 
     use parkind1, only           : jprb
@@ -208,9 +265,9 @@ contains
     implicit none
 
     ! Inputs
-    integer,    intent(in) :: ng   ! number of spectral intervals
+    integer,    intent(in) :: ng_lw_in   ! number of spectral intervals
     integer,    intent(in) :: nlev ! number of levels
-    integer,    intent(in) :: nreg ! number of regions
+    integer,    intent(in) :: nreg_in ! number of regions
     integer,    intent(in) :: icol ! Index of column for output
     real(jprb), intent(in) :: transmittance(ng,nreg,nlev)
     real(jprb), intent(in) :: u_matrix(nreg,nreg,nlev+1) ! Upward overlap matrix
@@ -221,9 +278,8 @@ contains
 
     ! Rate of change of spectral flux at a given height with respect
     ! to the surface value
-    real(jprb) :: lw_deriv(ng,nreg), lw_deriv_below(ng,nreg)
-    real(jprb) :: partial_sum(ng)
-
+    real(jprb) :: lw_derivatives_g_reg(ng,nreg), lw_deriv_old(ng,nreg)
+    real(jprb) :: sum_tmp
     integer    :: jlev, jg
 
     real(jphook) :: hook_handle
@@ -233,58 +289,61 @@ contains
     ! Initialize the derivatives at the surface; the surface is
     ! treated as a single clear-sky layer so we only need to put
     ! values in region 1.
-    lw_deriv = 0.0_jprb
-    lw_deriv(:,1) = flux_up_surf / sum(flux_up_surf)
+    lw_derivatives_g_reg = 0.0_jprb
+    lw_derivatives_g_reg(:,1) = flux_up_surf / sum(flux_up_surf)
     lw_derivatives(icol, nlev+1) = 1.0_jprb
 
-    if (nreg == 3) then 
-      ! Optimize the most common case of 3 regions by removing the
-      ! nested call to singlemat_x_vec and unrolling the matrix
-      ! multiplication inline
-      
+    ! Move up through the atmosphere computing the derivatives at each
+    ! half-level
+#ifdef OPTIM_CODE
+    if (nreg==3) then 
+
       do jlev = nlev,1,-1
         ! Compute effect of overlap at half-level jlev+1, yielding
         ! derivatives just above that half-level
-        lw_deriv_below = lw_deriv
-        
-        associate(A=>u_matrix(:,:,jlev+1), b=>lw_deriv_below)
-          do jg = 1,ng   
-            ! Both inner and outer loop of the matrix loops j1 and j2 unrolled
-            ! inner loop:        j2=1             j2=2             j2=3 
-            lw_deriv(jg,1) = A(1,1)*b(jg,1) + A(1,2)*b(jg,2) + A(1,3)*b(jg,3) 
-            lw_deriv(jg,2) = A(2,1)*b(jg,1) + A(2,2)*b(jg,2) + A(2,3)*b(jg,3) 
-            lw_deriv(jg,3) = A(3,1)*b(jg,1) + A(3,2)*b(jg,2) + A(3,3)*b(jg,3) 
+
+        ! lw_derivatives_g_reg = singlemat_x_vec(ng,ng,nreg,u_matrix(:,:,jlev+1),lw_derivatives_g_reg)
+
+        lw_deriv_old  = lw_derivatives_g_reg
+        sum_tmp       = 0.0_jprb
+
+        associate(A=>u_matrix(:,:,jlev+1), b=>lw_deriv_old)
+          !$omp simd reduction(+:sum_tmp)
+          do jg = 1, ng   
+            ! both inner and outer loop of the matrix loops j1 and j2 unrolled
+            ! inner loop:                   j2=1             j2=2             j2=3 
+            lw_derivatives_g_reg(jg,1) = A(1,1)*b(jg,1) + A(1,2)*b(jg,2) + A(1,3)*b(jg,3) 
+            lw_derivatives_g_reg(jg,2) = A(2,1)*b(jg,1) + A(2,2)*b(jg,2) + A(2,3)*b(jg,3) 
+            lw_derivatives_g_reg(jg,3) = A(3,1)*b(jg,1) + A(3,2)*b(jg,2) + A(3,3)*b(jg,3) 
 
             ! Compute effect of transmittance of layer jlev, yielding
             ! derivatives just below the half-level above (jlev)
-            lw_deriv(jg,1) = lw_deriv(jg,1) * transmittance(jg,1,jlev)
-            lw_deriv(jg,2) = lw_deriv(jg,2) * transmittance(jg,2,jlev)
-            lw_deriv(jg,3) = lw_deriv(jg,3) * transmittance(jg,3,jlev)
+            lw_derivatives_g_reg(jg,1) = lw_derivatives_g_reg(jg,1) * transmittance(jg,1,jlev)
+            lw_derivatives_g_reg(jg,2) = lw_derivatives_g_reg(jg,2) * transmittance(jg,2,jlev)
+            lw_derivatives_g_reg(jg,3) = lw_derivatives_g_reg(jg,3) * transmittance(jg,3,jlev)
 
-            partial_sum(jg) = lw_deriv(jg,1) + lw_deriv(jg,2) + lw_deriv(jg,3)
+            sum_tmp = sum_tmp + lw_derivatives_g_reg(jg,1) + lw_derivatives_g_reg(jg,2) + lw_derivatives_g_reg(jg,3)
           end do
         end associate
 
-        lw_derivatives(icol, jlev) = sum(partial_sum)
+        lw_derivatives(icol, jlev) = sum_tmp
       end do
-    else
-      ! General case when number of regions is not 3
-      
-      ! Move up through the atmosphere computing the derivatives at each
-      ! half-level
+    else 
+#endif      
       do jlev = nlev,1,-1
         ! Compute effect of overlap at half-level jlev+1, yielding
         ! derivatives just above that half-level
-        lw_deriv = singlemat_x_vec(ng,ng,nreg,u_matrix(:,:,jlev+1),lw_deriv)
-        
+        lw_derivatives_g_reg = singlemat_x_vec(ng,ng,nreg,u_matrix(:,:,jlev+1),lw_derivatives_g_reg)
+
         ! Compute effect of transmittance of layer jlev, yielding
         ! derivatives just below the half-level above (jlev)
-        lw_deriv = transmittance(:,:,jlev) * lw_deriv
-        
-        lw_derivatives(icol, jlev) = sum(lw_deriv)
+        lw_derivatives_g_reg = transmittance(:,:,jlev) * lw_derivatives_g_reg
+
+        lw_derivatives(icol, jlev) = sum(lw_derivatives_g_reg)
       end do
+#ifdef OPTIM_CODE
     end if
-    
+#endif
     if (lhook) call dr_hook('radiation_lw_derivatives:calc_lw_derivatives_region',1,hook_handle)
 
   end subroutine calc_lw_derivatives_region

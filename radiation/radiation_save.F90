@@ -1073,6 +1073,8 @@ contains
     
     do_aerosol = config%use_aerosols .and. present(aerosol)
 
+    !$OMP CRITICAL
+
     ! Open the file
     call out_file%create(trim(file_name), iverbose=i_local_verbose)
 
@@ -1297,6 +1299,8 @@ contains
 
     ! Close the file
     call out_file%close()
+
+    !$OMP END CRITICAL
 
     if (lhook) call dr_hook('radiation_save:save_inputs',1,hook_handle)
     

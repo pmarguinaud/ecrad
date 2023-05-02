@@ -55,12 +55,15 @@ elemental subroutine delta_eddington_extensive(od, scat_od, scat_od_g)
   ! and therefore treated as if it is not scattered at all
   real(jprb) :: f, g
 
+#ifdef OPTIM_CODE
+  g = scat_od_g / max(scat_od, tiny(scat_od))
+#else
   if (scat_od > 0.0_jprb) then
     g = scat_od_g / scat_od
   else
     g = 0.0
   end if
-
+#endif
   f         = g*g
   od        = od - scat_od * f
   scat_od   = scat_od * (1.0_jprb - f)
@@ -68,31 +71,28 @@ elemental subroutine delta_eddington_extensive(od, scat_od, scat_od_g)
   
 end subroutine delta_eddington_extensive
 
-
-!---------------------------------------------------------------------
-! Array version of delta_eddington_extensive, more likely to vectorize
- subroutine delta_eddington_extensive_vec(ng, od, scat_od, scat_od_g)
+! Array version which ensures vectorization - no guarantee for elemental procedure
+ subroutine delta_eddington_extensive_vec(nbnd, od, scat_od, scat_od_g)
 
   use parkind1, only : jprb
 
   ! Total optical depth, scattering optical depth and asymmetry factor
   ! multiplied by the scattering optical depth
-  integer,                   intent(in)    :: ng
-  real(jprb), dimension(ng), intent(inout) :: od, scat_od, scat_od_g
+  integer,                      intent(in)    :: nbnd
+  real(jprb), dimension(nbnd),  intent(inout) :: od, scat_od, scat_od_g
 
   ! Fraction of the phase function deemed to be in the forward lobe
   ! and therefore treated as if it is not scattered at all
   real(jprb) :: f, g
   integer :: j
 
-  do j = 1,ng
-    g            = scat_od_g(j) / max(scat_od(j), 1.0e-24)
-    f            = g*g
+  do j = 1, nbnd
+    g             = scat_od_g(j) / max(scat_od(j), tiny(scat_od(j)))
+    f             = g*g
     od(j)        = od(j) - scat_od(j) * f
     scat_od(j)   = scat_od(j) * (1.0_jprb - f)
     scat_od_g(j) = scat_od(j) * g / (1.0_jprb + g)
   end do
-  
 end subroutine delta_eddington_extensive_vec
 
 

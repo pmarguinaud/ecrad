@@ -13,6 +13,10 @@
 ! Email:   r.j.hogan@ecmwf.int
 ! License: see the COPYING file for details
 !
+! Modifications
+!   2022-09-01  P. Ukkonen  faster calc_planck_function and calc_optical_depth_ckd_model by 
+!                           allowing ng to be defined at compile time, to speed up latter
+!                           ng_lw and ng_sw must match
 
 module radiation_ecckd
 
@@ -460,9 +464,15 @@ contains
     ! Output variables
 
     ! Layer absorption optical depth for each g point
+#if defined NG_SW && defined NG_LW && NG_SW==NG_LW 
+    real(jprb),            intent(out) :: optical_depth_fl(NG_SW,nlev,istartcol:iendcol)
+    ! In the shortwave only, the Rayleigh scattering optical depth
+    real(jprb),  optional, intent(out) :: rayleigh_od_fl(NG_SW,nlev,istartcol:iendcol)
+#else 
     real(jprb),            intent(out) :: optical_depth_fl(this%ng,nlev,istartcol:iendcol)
     ! In the shortwave only, the Rayleigh scattering optical depth
     real(jprb),  optional, intent(out) :: rayleigh_od_fl(this%ng,nlev,istartcol:iendcol)
+#endif
 
     ! Local variables
 
@@ -634,8 +644,11 @@ contains
     class(ckd_model_type), intent(in)  :: this
     integer,    intent(in)  :: nt
     real(jprb), intent(in)  :: temperature(:) ! K
+#if defined NG_LW
+    real(jprb), intent(out) :: planck(NG_LW,nt) ! W m-2
+#else 
     real(jprb), intent(out) :: planck(this%ng,nt) ! W m-2
-
+#endif
     real(jprb) :: tindex1, tw1, tw2
     integer    :: it1, jt
 

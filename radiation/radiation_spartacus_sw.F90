@@ -83,10 +83,14 @@ contains
          &                               indexed_sum, add_indexed_sum
     use radiation_matrix
     use radiation_two_stream, only     : calc_two_stream_gammas_sw, &
-         &  calc_reflectance_transmittance_sw, calc_frac_scattered_diffuse_sw
+         &  calc_reflectance_transmittance_sw, calc_frac_scattered_diffuse_sw, &
+         &  SwDiffusivity
     use radiation_constants, only      : Pi, GasConstantDryAir, &
          &                               AccelDueToGravity
-
+#ifdef USE_TIMING
+    ! Timing library
+    use gptl,                  only: gptlstart, gptlstop
+#endif
     implicit none
 
     ! Inputs
@@ -291,6 +295,9 @@ contains
     real(jprb) :: max_entr
 
     real(jphook) :: hook_handle
+#ifdef USE_TIMING
+    integer :: ret
+#endif    
 
     if (lhook) call dr_hook('radiation_spartacus_sw:solver_spartacus_sw',0,hook_handle)
 
@@ -644,8 +651,8 @@ contains
 
               ! Apply maximum cloud optical depth for stability in the
               ! 3D case
-              if (od_region(jg,jreg) > config%max_cloud_od) then
-                od_region(jg,jreg) = config%max_cloud_od
+              if (od_region(jg,jreg) > config%max_cloud_od_sw) then
+                od_region(jg,jreg) = config%max_cloud_od_sw
               end if
 
             end do
@@ -660,11 +667,19 @@ contains
             ! increasing optical depth: if optical depth of
             ! clear-sky region exceeds a threshold then turn off
             ! 3D effects for any further g-points
-            if (ng3D == ng &
-                 &  .and. od_region(jg,1) > config%max_gas_od_3D) then
-              ng3D = jg-1
+            if (ng /= config%n_bands_sw) then ! do not turn off 3D effects for ECCKD
+               if (ng3D == ng &
+                    &  .and. od_region(jg,1) > config%max_gas_od_3D) then
+               ng3D = jg-1
+               end if
             end if
           end do ! Loop over g points
+
+          ! when using ECCKD, cap the optical depth of clear-sky region to a threshold for
+          ! stable 3D computations
+          if (ng == config%n_bands_sw) then 
+               od_region(:,1) = min(od_region(:,1),config%max_gas_od_3D)
+          end if
         end if ! Cloudy level
 
         ! --------------------------------------------------------
@@ -672,7 +687,6 @@ contains
         ! --------------------------------------------------------
         if (ng3D > 0) then
           ! --- Section 3.3a: g-points with 3D effects ----------
-
           ! 3D effects need to be represented in "ng3D" of the g
           ! points.  This is done by creating ng3D square matrices
           ! each of dimension 3*nreg by 3*nreg, computing the matrix
@@ -750,8 +764,20 @@ contains
 
           ! Compute the matrix exponential of Gamma_z1, returning the
           ! result in-place
-          call expm(ng, ng3D, 3*nreg, Gamma_z1, IMatrixPatternShortwave)
 
+          ! Additional security on elements fed to matrix exponential
+          ! in single precision
+          if (jprb <= 4) then
+            Gamma_z1 = min(Gamma_z1, 22.0_jprb)
+          end if
+    
+#ifdef USE_TIMING
+    ret =  gptlstart('expm_sw')
+#endif         
+          call expm(ng, ng3D, 3*nreg, Gamma_z1, IMatrixPatternShortwave)
+#ifdef USE_TIMING
+    ret =  gptlstop('expm_sw')
+#endif 
           ! Update count of expm calls
           n_calls_expm = n_calls_expm + ng3D
 
@@ -765,7 +791,7 @@ contains
                &  -solve_mat(ng,ng3D,nreg,Gamma_z1(1:ng3D,1:nreg,1:nreg), &
                &             Gamma_z1(1:ng3D,1:nreg,nreg+1:2*nreg))))
           ! Diffuse transmission matrix
-          transmittance(1:ng3D,:,:,jlev) = min(1.0_jprb,max(0.0_jprb, &
+          transmittance(1:ng3D,:,:,jlev) = min(1.0_jprb-reflectance(1:ng3D,:,:,jlev),max(0.0_jprb, &
                &  mat_x_mat(ng,ng3D,nreg,Gamma_z1(1:ng3D,nreg+1:2*nreg,1:nreg), &
                &            reflectance(1:ng3D,:,:,jlev)) &
                &  + Gamma_z1(1:ng3D,nreg+1:2*nreg,nreg+1:2*nreg)))
@@ -1133,6 +1159,21 @@ end if
                        &  * edge_length(3,jlev-1) / max(u_matrix(3,jreg2,jlev,jcol),1.0e-5_jprb)
                 end if
               end if
+              
+#define USE_FAST_EXPM_EXCHANGE 1
+#ifdef USE_FAST_EXPM_EXCHANGE
+                ! If we use fast_expm_exchange then ensure "a" and "d"
+                ! are not equal as this causes problems in the
+                ! eigenvector computation
+                if (nreg == 3) then
+                  if (abs(transfer_rate_diffuse(1,2)-transfer_rate_diffuse(3,2)) &
+                       & < 100.0_jprb * epsilon(1.0_jprb) &
+                       &   * (transfer_rate_diffuse(1,2)+transfer_rate_diffuse(3,2))) then
+                    transfer_rate_diffuse(1,2) = transfer_rate_diffuse(1,2) &
+                         &  * (1.0_jprb - 400.0_jprb*epsilon(1.0_jprb)) * transfer_rate_diffuse(1,2)
+                  end if
+                end if
+#endif
 
               ! Compute matrix of exchange coefficients
               entrapment = 0.0_jprb
@@ -1168,9 +1209,9 @@ end if
               ! scaling down if necessary
               do jg = 1,ng
                 max_entr = -min(entrapment(jg,1,1),entrapment(jg,2,2))
-                if (max_entr > config%max_cloud_od) then
+                if (max_entr > config%max_cloud_od_sw) then
                   ! Scale down all inputs for this g point
-                  entrapment(jg,:,:) = entrapment(jg,:,:) * (config%max_cloud_od/max_entr)
+                  entrapment(jg,:,:) = entrapment(jg,:,:) * (config%max_cloud_od_sw/max_entr)
                 end if
               end do
 
@@ -1232,7 +1273,6 @@ end if
 
               ! Increment diffuse albedo
               total_albedo(:,:,:,jlev) = total_albedo(:,:,:,jlev) + albedo_part
-
               ! Now do the same for the direct albedo
               entrapment = 0.0_jprb
               do jreg = 1,nreg-1
@@ -1265,9 +1305,9 @@ end if
               ! scaling down if necessary
               do jg = 1,ng
                 max_entr = -min(entrapment(jg,1,1),entrapment(jg,2,2))
-                if (max_entr > config%max_cloud_od) then
+                if (max_entr > config%max_cloud_od_sw) then
                   ! Scale down all inputs for this g point
-                  entrapment(jg,:,:) = entrapment(jg,:,:) * (config%max_cloud_od/max_entr)
+                  entrapment(jg,:,:) = entrapment(jg,:,:) * (config%max_cloud_od_sw/max_entr)
                 end if
               end do
 
@@ -1301,7 +1341,7 @@ end if
                 do jreg = 1,nreg
                   transfer_scaling = 1.0_jprb - (1.0_jprb - config%overhang_factor) & 
                        &  * cloud%overlap_param(jcol,jlev-1) &
-                       &  * min(region_fracs(jreg,jlev,jcol), region_fracs(jreg,jlev-1,jcol)) &
+                       &  * min(region_fracs(jreg,jlev,jcol), region_fracs(jreg,jlev-1,jcol))
                        &  / max(config%cloud_fraction_threshold, region_fracs(jreg,jlev,jcol))
                   do jreg4 = 1,nreg
                     if (.not. (jreg4 == jreg .and. jreg4 /= jreg2)) then

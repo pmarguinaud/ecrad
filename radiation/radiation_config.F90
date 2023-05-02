@@ -27,6 +27,7 @@
 !   2019-02-10  R. Hogan  Renamed "encroachment" to "entrapment"
 !   2020-05-18  R. Hogan  Moved out_of_bounds_* to radiation_check.F90
 !   2021-07-04  R. Hogan  Numerous changes for ecCKD and general cloud/aerosol optics
+!   2022-01-18  P. Ukkonen Added support for RRTMGP gas optics, with optional neural networks
 !
 ! Note: The aim is for ecRad in the IFS to be as similar as possible
 ! to the offline version, so if you make any changes to this or any
@@ -44,6 +45,8 @@ module radiation_config
   use radiation_cloud_cover,         only : OverlapName, &
        & IOverlapMaximumRandom, IOverlapExponentialRandom, IOverlapExponential
   use radiation_ecckd,               only : ckd_model_type
+  use mo_gas_optics_rrtmgp,          only : ty_gas_optics_rrtmgp
+  use mod_network_rrtmgp,            only : rrtmgp_network_type
 
   implicit none
   public
@@ -96,11 +99,13 @@ module radiation_config
 
   ! Gas models
   enum, bind(c) 
-     enumerator IGasModelMonochromatic, IGasModelIFSRRTMG, IGasModelECCKD
+     enumerator IGasModelMonochromatic, IGasModelIFSRRTMG, IGasModelECCKD, IGasModelRRTMGP, IGasModelRRTMGP_NN
   end enum
-  character(len=*), parameter :: GasModelName(0:2) = (/ 'Monochromatic', &
+  character(len=*), parameter :: GasModelName(0:4) = (/ 'Monochromatic', &
        &                                                'RRTMG-IFS    ', &
-       &                                                'ECCKD        '/)
+       &                                                'ECCKD        ', &
+       &                                                'RRTMGP       ', & !/)
+       &                                                'RRTMGP-NN    ' /)
 
   ! Liquid cloud optics models for use with RRTMG gas optics
   enum, bind(c) 
@@ -248,8 +253,14 @@ module radiation_config
     ! Maximum total optical depth of a cloudy region for stability:
     ! optical depth will be capped at this value in the SPARTACUS
     ! solvers
-    real(jprb) :: max_cloud_od = 16.0_jprb
-
+#ifdef PARKIND1_SINGLE
+    !real(jprb) :: max_cloud_od = 10.5_jprb
+    real(jprb) :: max_cloud_od_lw = 10.3_jprb
+    real(jprb) :: max_cloud_od_sw = 11.5_jprb
+#else
+    real(jprb) :: max_cloud_od_sw = 16.0_jprb
+    real(jprb) :: max_cloud_od_lw = 16.0_jprb
+#endif
     ! How much longwave scattering is included?
     logical :: do_lw_cloud_scattering = .true.
     logical :: do_lw_aerosol_scattering = .true.
@@ -377,11 +388,15 @@ module radiation_config
     ! high for the clear-sky regions in layers with high cloud
     ! fraction.  For stability reasons it is necessary to provide a
     ! maximum possible 3D transfer rate.
+#ifdef PARKIND1_SINGLE
+    real(jprb) :: max_3d_transfer_rate = 2.0_jprb
+#else
     real(jprb) :: max_3d_transfer_rate = 10.0_jprb
-
+#endif
     ! It has also sometimes been found necessary to set a minimum
     ! cloud effective size for stability (metres)
-    real(jprb) :: min_cloud_effective_size = 100.0_jprb
+    real(jprb) :: min_cloud_effective_size = 500.0_jprb 
+    ! from IFS, previously 100. 500 seems necessary for stability
 
     ! Given a horizontal migration distance, there is still
     ! uncertainty about how much entrapment occurs associated with how
@@ -568,6 +583,22 @@ module radiation_config
     ! ecCKD
     type(ckd_model_type)         :: gas_optics_sw, gas_optics_lw
 
+    ! ----- RRTMGP settings ------ 
+    ! Data structures containing gas optics description in the case of
+    ! RRTMGP
+    type(ty_gas_optics_rrtmgp)   :: k_dist_sw, k_dist_lw
+
+    ! Data structures containing gas optics neural network models in the case of
+    ! RRTMGP-NN
+    type(rrtmgp_network_type), dimension(3) :: rrtmgp_neural_nets 
+    !! 1:SW-tau, 2:SW-ray, 3:LW-tau, 4:LW-planck   OR
+    ! 1:SW-tau, 2:SW-ray, 3:LW-both
+
+    ! Array of strings describing which RRTMGP gases are available in the host model
+    ! in the case of RRTMGP / RRTMGP-NN
+    character*32, dimension(:), allocatable :: rrtmgp_gas_names
+    ! ----- RRTMGP settings ------ 
+
     ! Data structure containing cloud scattering data
     type(cloud_optics_type)      :: cloud_optics
 
@@ -590,7 +621,15 @@ module radiation_config
          &                liq_optics_file_name, &
          &                aerosol_optics_file_name, &
          &                gas_optics_sw_file_name, &
-         &                gas_optics_lw_file_name
+         &                gas_optics_lw_file_name, &
+         &                rrtmgp_gas_optics_file_name_lw, &
+         &                rrtmgp_gas_optics_file_name_sw, &
+         &                rrtmgp_neural_net_sw_tau, &
+         &                rrtmgp_neural_net_sw_ray, &
+         &                rrtmgp_neural_net_lw
+        !  &                rrtmgp_neural_net_lw_tau, &
+        !  &                rrtmgp_neural_net_lw_pfrac
+         
 
     ! Solar spectral irradiance file name
     character(len=511) :: ssi_file_name
@@ -691,7 +730,7 @@ contains
     real(jprb):: mono_lw_single_scattering_albedo, mono_sw_single_scattering_albedo
     real(jprb):: mono_lw_asymmetry_factor, mono_sw_asymmetry_factor
     real(jprb):: cloud_inhom_decorr_scaling, cloud_fraction_threshold
-    real(jprb):: clear_to_thick_fraction, max_gas_od_3d, max_cloud_od
+    real(jprb):: clear_to_thick_fraction, max_gas_od_3d, max_cloud_od_lw, max_cloud_od_sw
     real(jprb):: cloud_mixing_ratio_threshold, overhead_sun_factor
     real(jprb):: max_3d_transfer_rate, min_cloud_effective_size
     real(jprb):: overhang_factor, encroachment_scaling
@@ -740,7 +779,7 @@ contains
          &  sw_solver_name, lw_solver_name, use_beta_overlap, use_vectorizable_generator, &
          &  use_expm_everywhere, iverbose, iverbosesetup, &
          &  cloud_inhom_decorr_scaling, cloud_fraction_threshold, &
-         &  clear_to_thick_fraction, max_gas_od_3d, max_cloud_od, &
+         &  clear_to_thick_fraction, max_gas_od_3d, max_cloud_od_lw, max_cloud_od_sw, &
          &  cloud_mixing_ratio_threshold, overhead_sun_factor, &
          &  n_aerosol_types, i_aerosol_type_map, use_aerosols, &
          &  mono_lw_wavelength, mono_lw_total_od, mono_sw_total_od, &
@@ -805,7 +844,8 @@ contains
     clear_to_thick_fraction = this%clear_to_thick_fraction
     overhead_sun_factor = this%overhead_sun_factor
     max_gas_od_3d = this%max_gas_od_3d
-    max_cloud_od = this%max_cloud_od
+    max_cloud_od_lw = this%max_cloud_od_lw
+    max_cloud_od_sw = this%max_cloud_od_sw
     max_3d_transfer_rate = this%max_3d_transfer_rate
     min_cloud_effective_size = this%min_cloud_effective_size
     cloud_type_name = this%cloud_type_name
@@ -954,7 +994,8 @@ contains
     this%clear_to_thick_fraction = clear_to_thick_fraction
     this%overhead_sun_factor = overhead_sun_factor
     this%max_gas_od_3d = max_gas_od_3d
-    this%max_cloud_od = max_cloud_od
+    this%max_cloud_od_lw = max_cloud_od_lw
+    this%max_cloud_od_sw = max_cloud_od_sw
     this%max_3d_transfer_rate = max_3d_transfer_rate
     this%min_cloud_effective_size = max(1.0e-6_jprb, min_cloud_effective_size)
     this%cloud_type_name = cloud_type_name
@@ -1067,6 +1108,31 @@ contains
       end if
     end if
 
+    if ((this%i_gas_model == IGasModelRRTMGP) &
+         & .and. (this%use_general_cloud_optics &
+         &        .or. this%use_general_aerosol_optics)) then
+      if (this%do_sw .and. this%do_cloud_aerosol_per_sw_g_point) then
+        write(nulout,'(a)') 'Warning: RRTMGP SW only supports cloud/aerosol optical properties per band, not per g-point'
+        this%do_cloud_aerosol_per_sw_g_point = .false.
+      end if
+      if (this%do_lw .and. this%do_cloud_aerosol_per_lw_g_point) then
+        write(nulout,'(a)') 'Warning: RRTMGP LW only supports cloud/aerosol optical properties per band, not per g-point'
+        this%do_cloud_aerosol_per_lw_g_point = .false.
+      end if
+    end if
+
+    if ((this%i_gas_model == IGasModelRRTMGP_NN) &
+         & .and. (this%use_general_cloud_optics &
+         &        .or. this%use_general_aerosol_optics)) then
+      if (this%do_sw .and. this%do_cloud_aerosol_per_sw_g_point) then
+        write(nulout,'(a)') 'Warning: RRTMGP-NN SW only supports cloud/aerosol optical properties per band, not per g-point'
+        this%do_cloud_aerosol_per_sw_g_point = .false.
+      end if
+      if (this%do_lw .and. this%do_cloud_aerosol_per_lw_g_point) then
+        write(nulout,'(a)') 'Warning: RRTMGP-NN LW only supports cloud/aerosol optical properties per band, not per g-point'
+        this%do_cloud_aerosol_per_lw_g_point = .false.
+      end if
+    end if
 
     ! Normal subroutine exit
     if (present(is_success)) then
@@ -1091,7 +1157,7 @@ contains
     class(config_type), intent(inout)         :: this
 
     real(jphook) :: hook_handle
-
+    integer :: n
     if (lhook) call dr_hook('radiation_config:consolidate',0,hook_handle)
 
     ! Check consistency of models
@@ -1169,6 +1235,47 @@ contains
       end if
 
     end if
+
+    ! Set RRTMGP gas optics file names
+#define USE_REDUCED_RRTMGP
+#ifdef USE_REDUCED_RRTMGP
+    ! Longwave
+    this%rrtmgp_gas_optics_file_name_lw &
+       & = trim(this%directory_name) // "/rrtmgp-data-lw-g128-210809.nc"
+    n = len_trim(this%rrtmgp_gas_optics_file_name_lw)
+    this%rrtmgp_neural_net_lw &
+    & = this%rrtmgp_gas_optics_file_name_lw(1:n-3) // "_NN_GCM_NWP.nc"
+    ! Shortwave
+    this%rrtmgp_gas_optics_file_name_sw &
+      & = trim(this%directory_name) // "/rrtmgp-data-sw-g112-210809.nc"
+    n = len_trim(this%rrtmgp_gas_optics_file_name_sw)
+    this%rrtmgp_neural_net_sw_tau &
+      & = this%rrtmgp_gas_optics_file_name_sw(1:n-3) // "_NN_GCM_NWP_absorption.nc"
+    this%rrtmgp_neural_net_sw_ray &
+      & = this%rrtmgp_gas_optics_file_name_sw(1:n-3) // "_NN_GCM_NWP_rayleigh.nc"
+#else 
+    ! Longwave
+    this%rrtmgp_gas_optics_file_name_lw &
+       & = trim(this%directory_name) // "/rrtmgp-data-lw-g256-2018-12-04.nc"
+    ! Shortwave
+    this%rrtmgp_gas_optics_file_name_sw &
+      & = trim(this%directory_name) // "/rrtmgp-data-sw-g224-2018-12-04.nc"
+    if (this%i_gas_model == IGasModelRRTMGP_NN) then
+      write(nulerr,'(a)') '*** Error: NNs for full-resolution RRTMGP not supported (change LW interface to use old models)'
+      call radiation_abort('Radiation configuration error')
+    end if
+    ! Older full-resolution models trained in Ukkonen et al. 2021, but LW treatment was different
+    ! n = len_trim(this%rrtmgp_gas_optics_file_name_lw)
+    ! this%rrtmgp_neural_net_lw_tau &
+    ! & = this%rrtmgp_gas_optics_file_name_lw(1:n-3) // "_NN_GCM_NWP_absorption.nc"
+    ! this%rrtmgp_neural_net_lw_pfrac &
+    ! & = this%rrtmgp_gas_optics_file_name_lw(1:n-3) // "_NN_GCM_NWP_planck_frac.nc"
+    ! n = len_trim(this%rrtmgp_gas_optics_file_name_sw)
+    ! this%rrtmgp_neural_net_sw_tau &
+    !   & = this%rrtmgp_gas_optics_file_name_sw(1:n-3) // "_NN_GCM_NWP_absorption.nc"
+    ! this%rrtmgp_neural_net_sw_ray &
+    !   & = this%rrtmgp_gas_optics_file_name_sw(1:n-3) // "_NN_GCM_NWP_rayleigh.nc"
+#endif
 
     if (this%use_spectral_solar_cycle) then
       if (this%i_gas_model /= IGasModelECCKD) then
@@ -1530,8 +1637,10 @@ contains
            &  .or. this%i_solver_lw == ISolverSpartacus) then
         write(nulout, '(a)') '  SPARTACUS options:'
         call print_integer('    Number of regions', 'n_regions', this%nregions)
-        call print_real('    Max cloud optical depth per layer', &
-             &   'max_cloud_od', this%max_cloud_od)
+        call print_real('    Max cloud optical depth per layer (LW)', &
+             &   'max_cloud_od_lw', this%max_cloud_od_lw)
+        call print_real('    Max cloud optical depth per layer (SW)', &
+             &   'max_cloud_od_sw', this%max_cloud_od_sw)
         call print_enum('    Shortwave entrapment is', EntrapmentName, &
              &          'i_3d_sw_entrapment', this%i_3d_sw_entrapment)
         call print_logical('    Multilayer longwave horizontal transport is', &

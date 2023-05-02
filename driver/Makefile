@@ -4,6 +4,7 @@ TEST_PROGRAMS = test_cloud_generator test_spartacus_math \
 
 # In dependency order:
 SOURCES = ecrad_driver_read_input.F90 \
+	ecrad_driver_read_input_blocked.F90 \
 	ecrad_driver_config.F90
 
 OBJECTS := $(SOURCES:.F90=.o)
@@ -43,9 +44,10 @@ clean:
 	rm -f *.o $(EXECUTABLE) $(IFS_EXECUTABLE) $(IFS_BLOCKED_EXECUTABLE) \
 		$(TEST_PROGRAMS)
 
-ecrad_driver.o: ecrad_driver_config.o ecrad_driver_read_input.o
+ecrad_driver.o: ecrad_driver_config.o ecrad_driver_read_input.o ecrad_driver_read_input_blocked.o
 ecrad_ifs_driver.o: ecrad_driver_config.o ecrad_driver_read_input.o
 ecrad_ifs_driver_blocked.o: ecrad_driver_config.o ecrad_driver_read_input.o ifs_blocking.o
 ecrad_driver_read_input.o ifs_blocking.o: ecrad_driver_config.o
+ecrad_driver_read_input_blocked.o: ecrad_driver_config.o
 
 .PHONY: driver ifs_driver test_programs all

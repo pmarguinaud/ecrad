@@ -15,6 +15,7 @@
 ! Modifications
 !   2017-04-11  R. Hogan  Changes to enable generalized surface description
 !   2017-09-08  R. Hogan  Reverted some changes
+!   2022-01-18  P. Ukkonen Added support for RRTMGP gas optics
 !
 ! To use the radiation scheme, create a configuration_type object,
 ! call "setup_radiation" on it once to load the look-up-tables and
@@ -39,8 +40,8 @@ contains
     use parkind1,         only : jprb
     use yomhook,          only : lhook, dr_hook, jphook
     use radiation_io,     only : nulerr, radiation_abort
-    use radiation_config, only : config_type, ISolverMcICA, &
-         &   IGasModelMonochromatic, IGasModelIFSRRTMG, IGasModelECCKD
+    use radiation_config, only : config_type, ISolverMcICA, IGasModelMonochromatic, &
+         &   IGasModelIFSRRTMG, IGasModelECCKD, IGasModelRRTMGP, IGasModelRRTMGP_NN
     use radiation_spectral_definition, only &
          &  : SolarReferenceTemperature, TerrestrialReferenceTemperature
     ! Currently there are two gas absorption models: RRTMG (default)
@@ -51,6 +52,7 @@ contains
          &   setup_aerosol_optics_mono => setup_aerosol_optics
     use radiation_ifs_rrtm,       only :  setup_gas_optics_rrtmg => setup_gas_optics
     use radiation_ecckd_interface,only :  setup_gas_optics_ecckd => setup_gas_optics
+    use radiation_ifs_rrtmgp,     only :  setup_gas_optics_ifs_rrtmgp
     use radiation_cloud_optics,   only :  setup_cloud_optics
     use radiation_general_cloud_optics, only :  setup_general_cloud_optics
     use radiation_aerosol_optics, only :  setup_aerosol_optics
@@ -73,6 +75,8 @@ contains
       call setup_gas_optics_rrtmg(config, trim(config%directory_name))
     else if (config%i_gas_model == IGasModelECCKD) then
       call setup_gas_optics_ecckd(config)
+    else if (config%i_gas_model == IGasModelRRTMGP .or. config%i_gas_model == IGasModelRRTMGP_NN) then
+      call setup_gas_optics_ifs_rrtmgp(config)
     end if
 
     if (config%do_lw_aerosol_scattering &
@@ -161,6 +165,7 @@ contains
     use radiation_gas,             only : gas_type
     use radiation_monochromatic,   only : set_gas_units_mono  => set_gas_units
     use radiation_ifs_rrtm,        only : set_gas_units_ifs   => set_gas_units
+    use radiation_ifs_rrtmgp,      only : set_gas_units_rrtmgp => set_gas_units
     use radiation_ecckd_interface, only : set_gas_units_ecckd => set_gas_units
 
     type(config_type), intent(in)    :: config
@@ -170,6 +175,9 @@ contains
       call set_gas_units_mono(gas)
     elseif (config%i_gas_model == IGasModelECCKD) then
       call set_gas_units_ecckd(gas)
+    elseif (config%i_gas_model == IGasModelRRTMGP .or. &
+      & config%i_gas_model == IGasModelRRTMGP_NN) then
+      call set_gas_units_rrtmgp(gas)
     else
       call set_gas_units_ifs(gas)
     end if
@@ -195,8 +203,8 @@ contains
 
     use radiation_io,             only : nulout
     use radiation_config,         only : config_type, &
-         &   IGasModelMonochromatic, IGasModelIFSRRTMG, &
-         &   ISolverMcICA, ISolverSpartacus, ISolverHomogeneous, &
+         &   IGasModelMonochromatic, IGasModelIFSRRTMG, IGasModelRRTMGP, &
+         &   IGasModelRRTMGP_NN, ISolverMcICA, ISolverSpartacus, ISolverHomogeneous, &
          &   ISolverTripleclouds
     use radiation_single_level,   only : single_level_type
     use radiation_thermodynamics, only : thermodynamics_type
@@ -208,6 +216,12 @@ contains
     use radiation_spartacus_lw,   only : solver_spartacus_lw
     use radiation_tripleclouds_sw,only : solver_tripleclouds_sw
     use radiation_tripleclouds_lw,only : solver_tripleclouds_lw
+#ifdef OPTIM_CODE
+    use radiation_spartacus_sw_opt,   only : solver_spartacus_sw_opt
+    use radiation_spartacus_lw_opt,   only : solver_spartacus_lw_opt
+    use radiation_tripleclouds_sw_opt,only : solver_tripleclouds_sw_opt
+    use radiation_tripleclouds_lw_opt,only : solver_tripleclouds_lw_opt
+#endif
     use radiation_mcica_sw,       only : solver_mcica_sw
     use radiation_mcica_lw,       only : solver_mcica_lw
     use radiation_cloudless_sw,   only : solver_cloudless_sw
@@ -215,7 +229,10 @@ contains
     use radiation_homogeneous_sw, only : solver_homogeneous_sw
     use radiation_homogeneous_lw, only : solver_homogeneous_lw
     use radiation_save,           only : save_radiative_properties
-
+#ifdef USE_TIMING
+    ! Timing library
+    use gptl,                  only: gptlstart, gptlstop
+#endif
     ! Treatment of gas and hydrometeor optics 
     use radiation_monochromatic,  only : &
          &   gas_optics_mono         => gas_optics, &
@@ -223,9 +240,10 @@ contains
          &   add_aerosol_optics_mono => add_aerosol_optics
     use radiation_ifs_rrtm,       only : gas_optics_rrtmg => gas_optics
     use radiation_ecckd_interface,only : gas_optics_ecckd => gas_optics
+    use radiation_ifs_rrtmgp,     only : gas_optics_ifs_rrtmgp
     use radiation_cloud_optics,   only : cloud_optics
     use radiation_general_cloud_optics, only : general_cloud_optics
-    use radiation_aerosol_optics, only : add_aerosol_optics
+    use radiation_aerosol_optics, only : add_aerosol_optics, add_aerosol_optics_opt
 
     ! Inputs
     integer, intent(in) :: ncol               ! number of columns
@@ -294,9 +312,14 @@ contains
     character(*), parameter :: rad_prop_base_file_name = "radiative_properties"
 
     real(jphook) :: hook_handle
+#ifdef USE_TIMING
+    integer :: ret
+#endif
 
     if (lhook) call dr_hook('radiation_interface:radiation',0,hook_handle)
-
+#ifdef USE_TIMING
+    ret =  gptlstart('radiation_interface:radiation')
+#endif
     if (thermodynamics%pressure_hl(istartcol,2) &
          &  < thermodynamics%pressure_hl(istartcol,1)) then
       ! Input arrays are arranged in order of decreasing pressure /
@@ -320,6 +343,12 @@ contains
       ! extinction due to Rayleigh scattering), Planck functions and
       ! incoming shortwave flux at each g-point, for the specified
       ! range of atmospheric columns
+#ifdef USE_TIMING
+    ret =  gptlstart('gas_optics')
+#endif     
+      if (config%iverbose >= 2) then
+        write(nulout,'(a)') 'Computing gas optical properties'
+      end if
       if (config%i_gas_model == IGasModelMonochromatic) then
         call gas_optics_mono(ncol,nlev,istartcol,iendcol, config, &
              &  single_level, thermodynamics, gas, lw_albedo, &
@@ -331,6 +360,13 @@ contains
              &  od_lw, od_sw, ssa_sw, lw_albedo=lw_albedo, &
              &  planck_hl=planck_hl, lw_emission=lw_emission, &
              &  incoming_sw=incoming_sw)
+      else if (config%i_gas_model == IGasModelRRTMGP .or. &
+            & config%i_gas_model == IGasModelRRTMGP_NN) then
+        call gas_optics_ifs_rrtmgp(ncol,nlev,istartcol,iendcol,config, &
+             &  single_level, thermodynamics, gas, &
+             &  od_lw, od_sw, ssa_sw, lw_albedo=lw_albedo, &
+             &  planck_hl=planck_hl, lw_emission=lw_emission, &
+             &  incoming_sw=incoming_sw)
       else
         call gas_optics_ecckd(ncol,nlev,istartcol,iendcol, config, &
              &  single_level, thermodynamics, gas, &
@@ -338,8 +374,15 @@ contains
              &  planck_hl=planck_hl, lw_emission=lw_emission, &
              &  incoming_sw=incoming_sw)
       end if
-
+      
+#ifdef USE_TIMING
+    ret =  gptlstop('gas_optics')
+    ret =  gptlstart('clouds')
+#endif  
       if (config%do_clouds) then
+        if (config%iverbose >= 2) then
+          write(nulout,'(a)') 'Computing cloud optical properties'
+        end if
         ! Crop the cloud fraction to remove clouds that have too small
         ! a fraction or water content; after this, we can safely
         ! assume that a cloud is present if cloud%fraction > 0.0.
@@ -367,15 +410,30 @@ contains
         end if
       end if ! do_clouds
 
+#ifdef USE_TIMING
+    ret =  gptlstop('clouds')
+    ret =  gptlstart('aerosols')
+#endif  
       if (config%use_aerosols) then
+        if (config%iverbose >= 2) then
+          write(nulout,'(a)') 'Computing aerosol optical properties'
+        end if
         if (config%i_gas_model == IGasModelMonochromatic) then
 !          call add_aerosol_optics_mono(nlev,istartcol,iendcol, &
 !               &  config, thermodynamics, gas, aerosol, & 
 !               &  od_lw, ssa_lw, g_lw, od_sw, ssa_sw, g_sw)
         else
+#ifdef OPTIM_CODE
+          call add_aerosol_optics_opt(config%n_g_sw, config%n_g_lw, &
+               &  config%n_bands_sw, config%n_bands_lw,  &
+               &  nlev,istartcol,iendcol, &
+               &  config, thermodynamics, gas, aerosol, & 
+               &  od_lw, ssa_lw, g_lw, od_sw, ssa_sw, g_sw)
+#else
           call add_aerosol_optics(nlev,istartcol,iendcol, &
                &  config, thermodynamics, gas, aerosol, & 
                &  od_lw, ssa_lw, g_lw, od_sw, ssa_sw, g_sw)
+#endif
         end if
       else
         g_sw(:,:,istartcol:iendcol) = 0.0_jprb
@@ -384,7 +442,9 @@ contains
           g_lw(:,:,istartcol:iendcol)   = 0.0_jprb
         end if
       end if
-
+#ifdef USE_TIMING
+    ret =  gptlstop('aerosols')
+#endif  
       ! For diagnostic purposes, save these intermediate variables to
       ! a NetCDF file
       if (config%do_save_radiative_properties) then
@@ -410,23 +470,55 @@ contains
         end if
 
         if (config%i_solver_lw == ISolverMcICA) then
+#ifdef USE_TIMING
+    ret =  gptlstart('mcica_lw')
+#endif  
           ! Compute fluxes using the McICA longwave solver
           call solver_mcica_lw(nlev,istartcol,iendcol, &
-               &  config, single_level, cloud, & 
-               &  od_lw, ssa_lw, g_lw, od_lw_cloud, ssa_lw_cloud, &
-               &  g_lw_cloud, planck_hl, lw_emission, lw_albedo, flux)
+                &  config, single_level, cloud, & 
+                &  od_lw, ssa_lw, g_lw, od_lw_cloud, ssa_lw_cloud, &
+                &  g_lw_cloud, planck_hl, lw_emission, lw_albedo, flux)
+#ifdef USE_TIMING
+    ret =  gptlstop('mcica_lw')
+#endif  
         else if (config%i_solver_lw == ISolverSPARTACUS) then
           ! Compute fluxes using the SPARTACUS longwave solver
+#ifdef USE_TIMING
+    ret =  gptlstart('spartacus_lw')
+#endif  
+#ifdef OPTIM_CODE
+          call solver_spartacus_lw_opt(config%n_g_lw, nlev,istartcol,iendcol, &
+               &  config, thermodynamics, cloud, & 
+               &  od_lw, ssa_lw, g_lw, od_lw_cloud, ssa_lw_cloud, g_lw_cloud, &
+               &  planck_hl, lw_emission, lw_albedo, flux)
+#else
           call solver_spartacus_lw(nlev,istartcol,iendcol, &
                &  config, thermodynamics, cloud, & 
                &  od_lw, ssa_lw, g_lw, od_lw_cloud, ssa_lw_cloud, g_lw_cloud, &
                &  planck_hl, lw_emission, lw_albedo, flux)
+#endif
+#ifdef USE_TIMING
+    ret =  gptlstop('spartacus_lw')
+#endif  
         else if (config%i_solver_lw == ISolverTripleclouds) then
+#ifdef USE_TIMING
+    ret =  gptlstart('tripleclouds_lw')
+#endif  
           ! Compute fluxes using the Tripleclouds longwave solver
+#ifdef OPTIM_CODE
+          call solver_tripleclouds_lw_opt(config%n_g_lw,nlev,istartcol,iendcol, &
+               &  config, cloud, & 
+               &  od_lw, ssa_lw, g_lw, od_lw_cloud, ssa_lw_cloud, g_lw_cloud, &
+               &  planck_hl, lw_emission, lw_albedo, flux)
+#else
           call solver_tripleclouds_lw(nlev,istartcol,iendcol, &
                &  config, cloud, & 
                &  od_lw, ssa_lw, g_lw, od_lw_cloud, ssa_lw_cloud, g_lw_cloud, &
                &  planck_hl, lw_emission, lw_albedo, flux)
+#endif
+#ifdef USE_TIMING
+    ret =  gptlstop('tripleclouds_lw')
+#endif
         elseif (config%i_solver_lw == ISolverHomogeneous) then
           ! Compute fluxes using the homogeneous solver
           call solver_homogeneous_lw(nlev,istartcol,iendcol, &
@@ -448,25 +540,64 @@ contains
 
         if (config%i_solver_sw == ISolverMcICA) then
           ! Compute fluxes using the McICA shortwave solver
-          call solver_mcica_sw(nlev,istartcol,iendcol, &
+#ifdef USE_TIMING
+    ret =  gptlstart('mcica_sw')
+#endif
+        call solver_mcica_sw(nlev,istartcol,iendcol, &
                &  config, single_level, cloud, & 
                &  od_sw, ssa_sw, g_sw, od_sw_cloud, ssa_sw_cloud, &
                &  g_sw_cloud, sw_albedo_direct, sw_albedo_diffuse, &
                &  incoming_sw, flux)
+#ifdef USE_TIMING
+    ret =  gptlstop('mcica_sw')
+#endif               
         else if (config%i_solver_sw == ISolverSPARTACUS) then
           ! Compute fluxes using the SPARTACUS shortwave solver
+#ifdef USE_TIMING
+    ret =  gptlstart('spartacus_sw')
+#endif
+
+if (lhook) call dr_hook('radiation_interface:radiation_spartacus',0,hook_handle)
+
+#ifdef OPTIM_CODE
+          call solver_spartacus_sw_opt(config%n_g_sw,nlev,istartcol,iendcol, &
+               &  config, single_level, thermodynamics, cloud, & 
+               &  od_sw, ssa_sw, g_sw, od_sw_cloud, ssa_sw_cloud, &
+               &  g_sw_cloud, sw_albedo_direct, sw_albedo_diffuse, &
+               &  incoming_sw, flux)
+#else
           call solver_spartacus_sw(nlev,istartcol,iendcol, &
                &  config, single_level, thermodynamics, cloud, & 
                &  od_sw, ssa_sw, g_sw, od_sw_cloud, ssa_sw_cloud, &
                &  g_sw_cloud, sw_albedo_direct, sw_albedo_diffuse, &
                &  incoming_sw, flux)
+#endif
+#ifdef USE_TIMING
+    ret =  gptlstop('spartacus_sw')
+#endif
+if (lhook) call dr_hook('radiation_interface:radiation_spartacus',1,hook_handle)
+
         else if (config%i_solver_sw == ISolverTripleclouds) then
           ! Compute fluxes using the Tripleclouds shortwave solver
-          call solver_tripleclouds_sw(nlev,istartcol,iendcol, &
+#ifdef USE_TIMING
+    ret =  gptlstart('tripleclouds_sw')
+#endif
+#ifdef OPTIM_CODE
+        call solver_tripleclouds_sw_opt(config%n_g_sw,nlev,istartcol,iendcol, &
                &  config, single_level, cloud, & 
                &  od_sw, ssa_sw, g_sw, od_sw_cloud, ssa_sw_cloud, &
                &  g_sw_cloud, sw_albedo_direct, sw_albedo_diffuse, &
                &  incoming_sw, flux)
+#else
+        call solver_tripleclouds_sw(nlev,istartcol,iendcol, &
+               &  config, single_level, cloud, & 
+               &  od_sw, ssa_sw, g_sw, od_sw_cloud, ssa_sw_cloud, &
+               &  g_sw_cloud, sw_albedo_direct, sw_albedo_diffuse, &
+               &  incoming_sw, flux)
+#endif
+#ifdef USE_TIMING
+    ret =  gptlstop('tripleclouds_sw')
+#endif
         elseif (config%i_solver_sw == ISolverHomogeneous) then
           ! Compute fluxes using the homogeneous solver
           call solver_homogeneous_sw(nlev,istartcol,iendcol, &
@@ -483,13 +614,15 @@ contains
         end if
       end if
 
-      ! Store surface downwelling, and TOA, fluxes in bands from
-      ! fluxes in g points
+      ! Store surface downwelling fluxes in bands from fluxes in g
+      ! points
       call flux%calc_surface_spectral(config, istartcol, iendcol)
       call flux%calc_toa_spectral    (config, istartcol, iendcol)
 
     end if
-    
+#ifdef USE_TIMING
+    ret =  gptlstop('radiation_interface:radiation')
+#endif
     if (lhook) call dr_hook('radiation_interface:radiation',1,hook_handle)
 
   end subroutine radiation
