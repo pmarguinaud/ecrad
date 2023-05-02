@@ -4,7 +4,8 @@ This document last updated 2 May 2023
 
 Robin Hogan <r.j.hogan@ecmwf.int>
 
---
+----------------------------------------------------------------------
+
 This branch by Peter Ukkonen (<peterukk@gmail.com>) features:
 
 1. Extensive code optimization described in a [preprint uploaded to ESS](https://doi.org/10.22541/essoar.168298700.07329865/v1)
@@ -13,7 +14,8 @@ To test the optimized versions of SPARTACUS and TripleClouds compile with
 2. New gas optics schemes RRTMGP and RRTMGP-NN. 
 The implementation, development and testing of RRTMGP-NN is described 
 in [a GMD paper](https://doi.org/10.5194/egusphere-2022-1047)
---
+
+----------------------------------------------------------------------
 
 For more complete information about compilation and usage of ecRad,
 please see the documentation on the
