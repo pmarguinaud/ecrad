@@ -1,3 +1,10 @@
+version 1.6.1-OPT (May 11 2023)
+	- radiation_cloud:set_overlap_param now has alternative form in
+	  which input decorrelation_length may vary with column, useful for
+	  models with a latitudinal or other dependence
+	- radiation_ecckd:calc_optical_depth has vector version for NEC
+
+
 version 1.6.0-OPT (1 May 2023)
 	- Add new gas optics schemes: RRTMGP and RRTMGP-NN
 	  The implementation, deveopment and testing is described in a GMD paper:
