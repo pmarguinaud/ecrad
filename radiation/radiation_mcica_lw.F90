@@ -49,8 +49,8 @@ contains
     use radiation_cloud, only          : cloud_type
     use radiation_flux, only           : flux_type
     use radiation_two_stream, only     : calc_two_stream_gammas_lw, &
-         &                               calc_reflectance_transmittance_lw, &
-         &                               calc_no_scattering_transmittance_lw
+         &                               calc_reflectance_transmittance_lw, calc_reflectance_transmittance_lw_opt, &
+         &                               calc_no_scattering_transmittance_lw, calc_no_scattering_transmittance_lw_opt
     use radiation_adding_ica_lw, only  : adding_ica_lw, fast_adding_ica_lw, &
          &                               calc_fluxes_no_scattering_lw
     use radiation_lw_derivatives, only : calc_lw_derivatives_ica, modify_lw_derivatives_ica
@@ -155,6 +155,13 @@ contains
       if (config%do_lw_aerosol_scattering) then
         ! Scattering case: first compute clear-sky reflectance,
         ! transmittance etc at each model level
+#if OPTIM_CODE==2 
+        call calc_reflectance_transmittance_lw_opt(ng*nlev, &
+            &  od(:,:,jcol), ssa(:,:,jcol), g(:,:,jcol), &
+            &  planck_hl(:,1:nlev,jcol), planck_hl(:,2:nlev+1,jcol), &
+            &  ref_clear, trans_clear, &
+            &  source_up_clear, source_dn_clear)
+#else
         do jlev = 1,nlev
           call calc_two_stream_gammas_lw(ng, ssa(:,jlev,jcol), g(:,jlev,jcol), &
                &  gamma1, gamma2)
@@ -164,6 +171,7 @@ contains
                &  ref_clear(:,jlev), trans_clear(:,jlev), &
                &  source_up_clear(:,jlev), source_dn_clear(:,jlev))
         end do
+#endif
         ! Then use adding method to compute fluxes
         call adding_ica_lw(ng, nlev, &
              &  ref_clear, trans_clear, source_up_clear, source_dn_clear, &
@@ -173,11 +181,17 @@ contains
       else
         ! Non-scattering case: use simpler functions for
         ! transmission and emission
+#if OPTIM_CODE==2 
+        call calc_no_scattering_transmittance_lw_opt(ng*nlev, &
+            &  od(:,:,jcol), planck_hl(:,1:nlev,jcol), planck_hl(:,2:nlev+1,jcol), &
+            &  trans_clear, source_up_clear, source_dn_clear)
+#else
         do jlev = 1,nlev
           call calc_no_scattering_transmittance_lw(ng, od(:,jlev,jcol), &
                &  planck_hl(:,jlev,jcol), planck_hl(:,jlev+1, jcol), &
                &  trans_clear(:,jlev), source_up_clear(:,jlev), source_dn_clear(:,jlev))
         end do
+#endif
         ! Simpler down-then-up method to compute fluxes
         call calc_fluxes_no_scattering_lw(ng, nlev, &
              &  trans_clear, source_up_clear, source_dn_clear, &
@@ -275,18 +289,31 @@ contains
             
               ! Compute cloudy-sky reflectance, transmittance etc at
               ! each model level
+#if OPTIM_CODE==2
+              call calc_reflectance_transmittance_lw_opt(ng, &
+                   &  od_total, ssa_total, g_total, &
+                   &  planck_hl(:,jlev,jcol), planck_hl(:,jlev+1,jcol), &
+                   &  reflectance(:,jlev), transmittance(:,jlev), source_up(:,jlev), source_dn(:,jlev))
+#else
               call calc_two_stream_gammas_lw(ng, ssa_total, g_total, &
                    &  gamma1, gamma2)
               call calc_reflectance_transmittance_lw(ng, &
                    &  od_total, gamma1, gamma2, &
                    &  planck_hl(:,jlev,jcol), planck_hl(:,jlev+1,jcol), &
                    &  reflectance(:,jlev), transmittance(:,jlev), source_up(:,jlev), source_dn(:,jlev))
+#endif
             else
               ! No-scattering case: use simpler functions for
               ! transmission and emission
+#if OPTIM_CODE==2
+              call calc_no_scattering_transmittance_lw_opt(ng, od_total, &
+                   &  planck_hl(:,jlev,jcol), planck_hl(:,jlev+1, jcol), &
+                   &  transmittance(:,jlev), source_up(:,jlev), source_dn(:,jlev))
+#else
               call calc_no_scattering_transmittance_lw(ng, od_total, &
                    &  planck_hl(:,jlev,jcol), planck_hl(:,jlev+1, jcol), &
                    &  transmittance(:,jlev), source_up(:,jlev), source_dn(:,jlev))
+#endif
             end if
 
           else

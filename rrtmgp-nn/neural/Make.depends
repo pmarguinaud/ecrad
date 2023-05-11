@@ -3,7 +3,8 @@ NEURAL_SRC = \
   mod_activation.o \
   mod_io.o \
   mod_layer.o \
-  mod_network.o \
+  mo_simple_netcdf.o \
+  mod_neural_network.o \
   mod_network_rrtmgp.o
 
 ##################################
@@ -20,8 +21,10 @@ mod_io.o: mo_rte_kind.o mod_io.F90
  
 mod_layer.o: mod_activation.o mo_rte_kind.o mod_layer.F90
 
-mod_network.o: mo_rte_kind.o mod_layer.o mod_network.F90
+mo_simple_netcdf.o: mo_rte_kind.o mo_simple_netcdf.F90
 
-mod_network_rrtmgp.o: mo_rte_kind.o mod_layer.o mod_network.o mo_simple_netcdf.o mod_network_rrtmgp.F90 
+mod_neural_network.o: mo_rte_kind.o mod_layer.o mod_neural_network.F90
+
+mod_network_rrtmgp.o: mo_rte_kind.o mod_layer.o mod_neural_network.o mo_simple_netcdf.o mod_network_rrtmgp.F90 
 
 

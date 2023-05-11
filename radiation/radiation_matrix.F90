@@ -2044,7 +2044,7 @@ contains
     integer    :: j1, j2, j3, jg, minexpo, nrepeat, jS, jE
     integer    :: expo(ng_sw*nlev_b)
     real(jphook) :: hook_handle
-    !dir$ assume_aligned A
+    !dir$ assume_aligned A:64
 #ifdef USE_TIMING
     ret =  gptlstart('expm_sw')
 #endif 

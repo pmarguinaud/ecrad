@@ -21,26 +21,6 @@ RRTMGP_KERNEL_DIR += rrtmgp/kernels
 NEURAL_DIR = neural
 VPATH = $(RRTMGP_DIR):$(RRTMGP_KERNEL_DIR):$(NEURAL_DIR)
 
-ifeq ($(DOUBLE_PRECISION),1)
-	FCFLAGS += -DDOUBLE_PRECISION
-endif
-
-ifeq ($(FAST_EXPONENTIAL),1)
-    # Approximation for exp function, significantly faster on non-intel compilers
-	FCFLAGS += -DFAST_EXPONENTIAL
-endif
-
-# Use GPTL timing library? Added this to main makefile to enable
-# timing instrumentation within RRTMGP and RTE source code
-ifeq ($(GPTL_TIMING),1)
-	# Timing library GPTL
-	FCFLAGS += -I$(TIME_DIR)/include -DUSE_TIMING 
-
-# Use GPTL with PAPI for hardware performance counters? (enables measuring compute intensity)
-else ifeq ($(GPTL_TIMING),2)
-	FCFLAGS += -I$(TIME_DIR)/include -DUSE_TIMING -DUSE_PAPI
-endif
-
 LIBRRTMGP = ../lib/librrtmgp.a ../lib/libneural.a
 all: $(LIBRRTMGP)
 

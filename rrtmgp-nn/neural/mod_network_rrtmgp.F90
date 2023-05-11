@@ -6,7 +6,7 @@ module mod_network_rrtmgp
     ! 
      
   use mo_rte_kind, only: sp
-  use mod_network, only: network_type
+  use mod_neural_network, only: network_type
   use mo_simple_netcdf,      only: get_dim_size, read_field, read_char_vec, stop_on_err
   use netcdf
 

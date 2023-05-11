@@ -1,4 +1,4 @@
-module mod_network
+module mod_neural_network
 
   ! Changelog:
   !        P. Ukkonen, 2020-2021: Optimized kernels using BLAS library calls for batched inference on CPU/GPU
@@ -673,4 +673,4 @@ end function matvecmul
                                               
   ! end subroutine output_sgemm_tau_sgemmbatched
 
-end module mod_network
+end module mod_neural_network
