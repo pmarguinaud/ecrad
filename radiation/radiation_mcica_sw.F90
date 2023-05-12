@@ -54,7 +54,10 @@ contains
          &                               calc_reflectance_transmittance_sw, calc_reflectance_transmittance_sw_opt
     use radiation_adding_ica_sw, only  : adding_ica_sw
     use radiation_cloud_generator, only: cloud_generator
-
+#ifdef USE_TIMING
+    ! Timing library
+    use gptl,                  only: gptlstart, gptlstop
+#endif
     implicit none
 
     ! Inputs
@@ -123,8 +126,11 @@ contains
     ! Total cloud cover output from the cloud generator
     real(jprb) :: total_cloud_cover
 
+    ! Faster broadband flux computation 
+    real(jprb) :: sums_up, sums_dn, sums_dn_dir
+
     ! Number of g points
-    integer :: ng
+    integer :: ng, ret
 
     ! Loop indices for level, column and g point
     integer :: jlev, jcol, jg
@@ -205,16 +211,20 @@ contains
         
         ! Sum over g-points to compute and save clear-sky broadband
         ! fluxes
-        flux%sw_up_clear(jcol,:) = sum(flux_up,1)
-        if (allocated(flux%sw_dn_direct_clear)) then
-          flux%sw_dn_direct_clear(jcol,:) &
-               &  = sum(flux_dn_direct,1)
-          flux%sw_dn_clear(jcol,:) = sum(flux_dn_diffuse,1) &
-               &  + flux%sw_dn_direct_clear(jcol,:)
-        else
-          flux%sw_dn_clear(jcol,:) = sum(flux_dn_diffuse,1) &
-               &  + sum(flux_dn_direct,1)
-        end if
+ 
+        do jlev = 1, nlev+1
+          sums_up = 0.0_jprb; sums_dn = 0.0_jprb; sums_dn_dir = 0.0_jprb
+          !$omp simd reduction(+:sums_up, sums_dn, sums_dn_dir)
+          do jg = 1, ng
+            sums_up = sums_up + flux_up(jg,jlev)
+            sums_dn = sums_dn + flux_dn_diffuse(jg,jlev)
+            sums_dn_dir = sums_dn_dir + flux_dn_direct(jg,jlev)
+          end do
+          flux%sw_up_clear(jcol,jlev) = sums_up 
+          flux%sw_dn_clear(jcol,jlev) = sums_dn + sums_dn_dir
+          if (allocated(flux%sw_dn_direct_clear)) flux%sw_dn_direct_clear(jcol,jlev) = sums_dn_dir
+        end do
+
         ! Store spectral downwelling fluxes at surface
         flux%sw_dn_diffuse_surf_clear_g(:,jcol) = flux_dn_diffuse(:,nlev+1)
         flux%sw_dn_direct_surf_clear_g(:,jcol)  = flux_dn_direct(:,nlev+1)
@@ -305,15 +315,18 @@ contains
                &  trans_dir_dir, flux_up, flux_dn_diffuse, flux_dn_direct)
           
           ! Store overcast broadband fluxes
-          flux%sw_up(jcol,:) = sum(flux_up,1)
-          if (allocated(flux%sw_dn_direct)) then
-            flux%sw_dn_direct(jcol,:) = sum(flux_dn_direct,1)
-            flux%sw_dn(jcol,:) = sum(flux_dn_diffuse,1) &
-                 &  + flux%sw_dn_direct(jcol,:)
-          else
-            flux%sw_dn(jcol,:) = sum(flux_dn_diffuse,1) &
-                 &  + sum(flux_dn_direct,1)
-          end if
+          do jlev = 1, nlev+1
+            sums_up = 0.0_jprb; sums_dn = 0.0_jprb; sums_dn_dir = 0.0_jprb
+            !$omp simd reduction(+:sums_up, sums_dn, sums_dn_dir)
+            do jg = 1, ng
+              sums_up = sums_up + flux_up(jg,jlev)
+              sums_dn = sums_dn + flux_dn_diffuse(jg,jlev)
+              sums_dn_dir = sums_dn_dir + flux_dn_direct(jg,jlev)
+            end do
+            flux%sw_up(jcol,jlev) = sums_up 
+            flux%sw_dn(jcol,jlev) = sums_dn + sums_dn_dir
+            if (allocated(flux%sw_dn_direct)) flux%sw_dn_direct(jcol,jlev) = sums_dn_dir
+          end do
 
           ! Cloudy flux profiles currently assume completely overcast
           ! skies; perform weighted average with clear-sky profile

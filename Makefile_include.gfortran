@@ -30,6 +30,7 @@ ifndef DEBUG
 
 # Optimization flags
 OPTFLAGS = -O3 -march=native # -fopt-info-vec-missed 
+
 # -march=native
 
 # Warning flags: all except those that warn about unused stuff

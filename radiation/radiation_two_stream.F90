@@ -42,7 +42,7 @@ module radiation_two_stream
   real(jprb), parameter :: SwDiffusivity = 2.00_jprb
 
   ! Make minimum k value depend on precision, allowing to avoid JPRD altogether
-#ifdef SINGLE_PRECISION
+#ifdef PARKIND1_SINGLE
   ! real(jprb), parameter :: KMin = 1.e4_jprb * epsilon(1._jprb)
   real(jprb), parameter :: KMinSw = 1.e-4_jprb
   real(jprb), parameter :: KMinLw = 1.e-4_jprb
@@ -921,6 +921,7 @@ contains
     ! print *, "min max tr", minval(trans_dir_dir), maxval(trans_dir_dir)
     ! GCC 9.3 strange error: intermediate values of ~ -8000 cause a FPE when vectorizing exp(), but not 
     ! in non-vectorized loop, nor with larger negative values!
+
     trans_dir_dir = exp(trans_dir_dir)
 
     associate(alpha1=>trans_dir_diff, alpha2=>ref_dir)
@@ -981,7 +982,8 @@ contains
       ! Meador & Weaver (1980) Eq. 15, multiplying top & bottom by
       ! exp(-k_exponent*od), minus the 1*exp(-od/mu0) term
       ! representing direct unscattered transmittance.
-      trans_dir_diff(jg) = reftrans_factor * ( k_2_exponential*(gamma4(jg) + alpha1(jg)*mu0) &
+      trans_dir_diff(jg) = reftrans_factor * &
+           & ( k_2_exponential*(gamma4(jg) + alpha1(jg)*mu0) &
            & - trans_dir_dir(jg) &
            & * ( (1.0_jprb + k_mu0) * (alpha1(jg) + k_gamma4) &
            &    -(1.0_jprb - k_mu0) * (alpha1(jg) - k_gamma4) * exponential2) )

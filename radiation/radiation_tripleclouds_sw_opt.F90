@@ -196,7 +196,7 @@ integer, parameter :: ng = NG_SW
 #endif
     ! integer :: nlev_block, nblocks, istartlev, iendlev, jb
     real(jphook) :: hook_handle
-
+  
 
     if (lhook) call dr_hook('radiation_tripleclouds_sw:solver_tripleclouds_sw',0,hook_handle)
 

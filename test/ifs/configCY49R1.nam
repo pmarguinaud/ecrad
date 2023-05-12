@@ -9,13 +9,14 @@
 !
 &radiation_driver
 do_parallel              = true,   ! Use OpenMP parallelization?
-nblocksize               = 80,      ! Number of columns to process per thread
+nblocksize               = 8,      ! Number of columns to process per thread
 do_save_inputs           = false,   ! Save inputs in "inputs.nc"?
+block_derived_types      = true,
 ! Verbosity level: 0=none, 1=warning, 2=info, 3=progress, 4=detailed, 5=debug
 iverbose    	   	= 2,
 istartcol               = 0,      ! Use full range of columns by default
 iendcol                 = 0,
-nrepeat                 = 1,
+nrepeat                 = 10,
 cloud_separation_scale_toa = 14000.0,
 cloud_separation_scale_surface = 2500.0,
 cloud_separation_scale_power = 3.5,
