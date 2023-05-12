@@ -222,7 +222,7 @@ contains
     ! Temperature at full levels (K)
     real(jprb) :: temperature_fl(istartcol:iendcol,nlev)
 
-    integer :: jcol
+    integer :: jcol, jlev, jg
 
     real(jphook) :: hook_handle
 
@@ -252,9 +252,14 @@ contains
       ! At this point od_sw = absorption optical depth and ssa_sw =
       ! rayleigh optical depth: convert to total optical depth and
       ! single-scattering albedo
-      od_sw = od_sw + ssa_sw
-      ssa_sw = ssa_sw / od_sw
-
+      do jcol = istartcol,iendcol
+        do jlev = 1, nlev
+          do jg = 1, config%n_g_sw
+            od_sw(jg,jlev,jcol)  = od_sw(jg,jlev,jcol) + ssa_sw(jg,jlev,jcol)
+            ssa_sw(jg,jlev,jcol) = ssa_sw(jg,jlev,jcol) / od_sw(jg,jlev,jcol)
+          end do
+        end do
+      end do
       if (present(incoming_sw)) then
         if (single_level%spectral_solar_cycle_multiplier == 0.0_jprb) then
           call config%gas_optics_sw%calc_incoming_sw(single_level%solar_irradiance, &
