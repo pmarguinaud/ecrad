@@ -655,7 +655,7 @@ integer, parameter :: ng = NG_SW
         ! Compute and store the broadband fluxes
         if (is_clear_sky_layer(jlev) .and. is_clear_sky_layer(jlev+1)) then
           sums_up = 0.0_jprb; sums_dn = 0.0_jprb; sums_dn_dir = 0.0_jprb
-          !$omp parallel do simd reduction(+:sums_up, sums_dn, sums_dn_dir)
+          !$omp simd reduction(+:sums_up, sums_dn, sums_dn_dir)
           do jg = 1, ng  
             sums_up = sums_up + flux_up(jg,1) 
             sums_dn = sums_dn + flux_dn(jg,1) 
@@ -663,7 +663,7 @@ integer, parameter :: ng = NG_SW
           end do
         else
           sums_up = 0.0_jprb; sums_dn = 0.0_jprb; sums_dn_dir = 0.0_jprb
-          !$omp parallel do simd reduction(+:sums_up, sums_dn, sums_dn_dir)
+          !$omp simd reduction(+:sums_up, sums_dn, sums_dn_dir)
           do jg = 1, ng  
             sums_up = sums_up + flux_up(jg,1) + flux_up(jg,2) + flux_up(jg,3)
             sums_dn = sums_dn + flux_dn(jg,1) + flux_dn(jg,2) + flux_dn(jg,3)
@@ -675,7 +675,7 @@ integer, parameter :: ng = NG_SW
         if (allocated(flux%sw_dn_direct)) flux%sw_dn_direct(jcol,jlev+1) = mu0*sums_dn_dir
         if (config%do_clear) then
           sums_up_clear = 0.0_jprb; sums_dn_clear = 0.0_jprb; sums_dn_dir_clear = 0.0_jprb
-          !$omp parallel do simd reduction(+:sums_up_clear, sums_dn_clear, sums_dn_dir_clear)
+          !$omp simd reduction(+:sums_up_clear, sums_dn_clear, sums_dn_dir_clear)
           do jg = 1, ng  
             sums_up_clear = sums_up_clear + flux_up_clear(jg)
             sums_dn_clear = sums_dn_clear + flux_dn_clear(jg)

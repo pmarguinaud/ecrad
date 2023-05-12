@@ -292,7 +292,7 @@ contains
         ! Sum over g-points to compute broadband fluxes
         do jlev = 1,nlev+1
           sums_up = 0.0_jprb; sums_dn = 0.0_jprb
-          !$omp parallel do simd reduction(+:sums_up, sums_dn)
+          !$omp simd reduction(+:sums_up, sums_dn)
           do jg = 1, ng  
             sums_up = sums_up + flux_up_clear(jg,jlev)
             sums_dn = sums_dn + flux_dn_clear(jg,jlev)
@@ -535,7 +535,7 @@ contains
       do jlev = i_cloud_top,1,-1
         if (jlev /= i_cloud_top) then
           sums_up = 0.0_jprb
-          !$omp parallel do simd reduction(+:sums_up)
+          !$omp simd reduction(+:sums_up)
           do jg = 1, ng
             flux_up(jg,1) = trans_clear(jg,jlev)*flux_up(jg,1) + source_up_clear(jg,jlev)
             sums_up       = sums_up + flux_up(jg,1)
@@ -624,7 +624,7 @@ contains
         ! Store the broadband fluxes
         if (is_clear_sky_layer(jlev) .and. is_clear_sky_layer(jlev+1)) then
           sums_up = 0.0_jprb; sums_dn = 0.0_jprb
-          !$omp parallel do simd reduction(+:sums_up, sums_dn)
+          !$omp simd reduction(+:sums_up, sums_dn)
           do jg = 1, ng  
             sums_up = sums_up + flux_up(jg,1)
             sums_dn = sums_dn + flux_dn(jg,1)
@@ -633,7 +633,7 @@ contains
           flux%lw_dn(jcol,jlev+1) = sums_dn
         else
           sums_up = 0.0_jprb; sums_dn = 0.0_jprb
-          !$omp parallel do simd reduction(+:sums_up, sums_dn)
+          !$omp simd reduction(+:sums_up, sums_dn)
           do jg = 1, ng  
             sums_up = sums_up + flux_up(jg,1) + flux_up(jg,2) + flux_up(jg,3)
             sums_dn = sums_dn + flux_dn(jg,1) + flux_dn(jg,2) + flux_dn(jg,3)

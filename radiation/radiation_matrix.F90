@@ -1491,8 +1491,9 @@ contains
     !     (0 0 I)
     integer,    intent(in)                                :: ng_sw_in, nlev_b
     real(jprb), intent(in),  dimension(ng_sw*nlev_b,9,9)  :: A
+    !dir$ assume_aligned A:64
     real(jprb), intent(out), dimension(ng_sw*nlev_b,9,9)  :: C
-    !dir$ assume_aligned A:64,C:64
+    !dir$ assume_aligned C:64
     integer    :: j1, j2, j3
     
     ! Do the top-left (C, D, F, G)
@@ -1532,8 +1533,9 @@ contains
 
     integer,    intent(in)                    :: ng_sw_in, nlev_b
     real(jprb), intent(in), dimension(ng_sw*nlev_b,9,9) :: A, B
+    !dir$ assume_aligned A:64,B:64
     real(jprb), intent(out),dimension(ng_sw*nlev_b,9,9) :: C
-    !dir$ assume_aligned A:64,B:64,C:64
+    !dir$ assume_aligned C:64
     integer    :: j1, j2, j3
     !     (C    D    E)
     ! A = (F=   G    H)
@@ -1566,8 +1568,9 @@ contains
   pure subroutine mat_x_mat_sw_repeats(ng_sw_in, nlev_b, A, B, C)
     integer,    intent(in)                              :: ng_sw_in, nlev_b
     real(jprb), intent(in), dimension(ng_sw*nlev_b,9,9) :: A, B
+    !dir$ assume_aligned A:64,B:64
     real(jprb), intent(out),dimension(ng_sw*nlev_b,9,9) :: C
-    !dir$ assume_aligned A:64,B:64,C:64
+    !dir$ assume_aligned C:64
     integer    :: j1, j2, j22
     ! Input matrices have pattern
     !     (C    D     E)
@@ -1601,8 +1604,9 @@ contains
   pure subroutine mat_x_mat_sw_repeatss(n, A, B, C)
     integer,    intent(in)                              :: n
     real(jprb), intent(in), dimension(n,9,9) :: A, B
+    !dir$ assume_aligned A:64,B:64
     real(jprb), intent(out),dimension(n,9,9) :: C
-    !dir$ assume_aligned A:64,B:64,C:64
+    !dir$ assume_aligned C:64
     integer    :: j1, j2, j22
     ! Input matrices have pattern
     !     (C    D     E)
@@ -1639,8 +1643,9 @@ contains
   pure subroutine solve_mat_sw(ng_sw_in,nlev_b,A,B)
     integer,    intent(in)    :: ng_sw_in, nlev_b
     real(jprb), intent(inout) :: A(ng_sw*nlev_b,9,9) ! A=LU is corrupted
+    !dir$ assume_aligned A:64
     real(jprb), intent(inout) :: B(ng_sw*nlev_b,9,9) ! X = B, both input and output
-    !dir$ assume_aligned A:64,B:64
+    !dir$ assume_aligned B:64
     ! Local variables
     integer :: j1, j2, j3
     integer, parameter :: m = 9
