@@ -44,25 +44,13 @@ ifdef SINGLE_PRECISION
 CPPFLAGS += -DPARKIND1_SINGLE
 endif
 
-# Flags to test optimized code, to be described in a paper. These include
-# - Optimized two-stream kernels
-# - Optimized expm and other matrix kernels used by SPARTACUS
-# - Batching of cloudy layers to improve vectorization in TripleClouds and SPARTACUS
-# - Aerosol optimizations
-# - declare number of g-points (inner dimension) at compile time, beneficial when NG is small   
-# - other things
-# do make PROFILE=gfortran SINGLE_PRECISION=1 ..
-# .. OPTIM_CODE=2 NG_SW=32 NG_LW=32 (for full optimizations when using 32-term ECCKD models)
-# .. OPTIM_CODE=1 (refactored solvers but original two-stream and matrix exponential kernels)
+# Option to declare number of g-points (inner dimension) at compile time, beneficial when NG is small   
+# make PROFILE=... NG_SW=32 NG_LW=32 (when using 32-term ECCKD models)
 ifdef NG_SW
 CPPFLAGS += -DNG_SW=$(NG_SW)
 endif
 ifdef NG_LW
 CPPFLAGS += -DNG_LW=$(NG_LW)
-endif
-ifdef OPTIM_CODE
-# CPPFLAGS += -DOPTIM_CODE
-CPPFLAGS += -DOPTIM_CODE=$(OPTIM_CODE)
 endif
 
 # ------------- NEW FOR ECRAD+RRTMGP-------------- 
@@ -150,8 +138,7 @@ help:
 	@echo "Other possible arguments are:"
 	@echo "  DEBUG=1              Compile with debug settings on and optimizations off"
 	@echo "  SINGLE_PRECISION=1   Compile with single precision"
-	@echo "  OPTIM_CODE=2         Compile with fully optimized version of TripleClouds, SPARTACUS and aerosol optics code
-	@echo "  NG_SW=32 NG_LW=32    Compile with explicit spectral dimension to allow compiler to optimize short loops, in this case for 32-term ECCKD models
+	@echo "  NG_SW=32 NG_LW=32    Compile with spectral dimension as compile time constant to improve performance, in this case for 32-term ecCKD models
 	@echo "  FIATDIR=/my/path     Compile with Dr Hook, specifying the directory containing lib/libfiat.so and module/fiat/yomhook.mod"
 	@echo "  test                 Run test cases in test directory"
 	@echo "  clean                Remove all compiled files"

@@ -55,15 +55,7 @@ elemental subroutine delta_eddington_extensive(od, scat_od, scat_od_g)
   ! and therefore treated as if it is not scattered at all
   real(jprb) :: f, g
 
-#ifdef OPTIM_CODE
   g = scat_od_g / max(scat_od, tiny(scat_od))
-#else
-  if (scat_od > 0.0_jprb) then
-    g = scat_od_g / scat_od
-  else
-    g = 0.0
-  end if
-#endif
   f         = g*g
   od        = od - scat_od * f
   scat_od   = scat_od * (1.0_jprb - f)

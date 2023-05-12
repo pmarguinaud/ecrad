@@ -216,12 +216,6 @@ contains
     use radiation_spartacus_lw,   only : solver_spartacus_lw
     use radiation_tripleclouds_sw,only : solver_tripleclouds_sw
     use radiation_tripleclouds_lw,only : solver_tripleclouds_lw
-#ifdef OPTIM_CODE
-    use radiation_spartacus_sw_opt,   only : solver_spartacus_sw_opt
-    use radiation_spartacus_lw_opt,   only : solver_spartacus_lw_opt
-    use radiation_tripleclouds_sw_opt,only : solver_tripleclouds_sw_opt
-    use radiation_tripleclouds_lw_opt,only : solver_tripleclouds_lw_opt
-#endif
     use radiation_mcica_sw,       only : solver_mcica_sw
     use radiation_mcica_lw,       only : solver_mcica_lw
     use radiation_cloudless_sw,   only : solver_cloudless_sw
@@ -243,7 +237,7 @@ contains
     use radiation_ifs_rrtmgp,     only : gas_optics_ifs_rrtmgp
     use radiation_cloud_optics,   only : cloud_optics
     use radiation_general_cloud_optics, only : general_cloud_optics
-    use radiation_aerosol_optics, only : add_aerosol_optics, add_aerosol_optics_opt
+    use radiation_aerosol_optics, only : add_aerosol_optics
 
     ! Inputs
     integer, intent(in) :: ncol               ! number of columns
@@ -423,17 +417,11 @@ contains
 !               &  config, thermodynamics, gas, aerosol, & 
 !               &  od_lw, ssa_lw, g_lw, od_sw, ssa_sw, g_sw)
         else
-#ifdef OPTIM_CODE
-          call add_aerosol_optics_opt(config%n_g_sw, config%n_g_lw, &
+          call add_aerosol_optics(config%n_g_sw, config%n_g_lw, &
                &  config%n_bands_sw, config%n_bands_lw,  &
                &  nlev,istartcol,iendcol, &
                &  config, thermodynamics, gas, aerosol, & 
                &  od_lw, ssa_lw, g_lw, od_sw, ssa_sw, g_sw)
-#else
-          call add_aerosol_optics(nlev,istartcol,iendcol, &
-               &  config, thermodynamics, gas, aerosol, & 
-               &  od_lw, ssa_lw, g_lw, od_sw, ssa_sw, g_sw)
-#endif
         end if
       else
         g_sw(:,:,istartcol:iendcol) = 0.0_jprb
@@ -486,17 +474,10 @@ contains
 #ifdef USE_TIMING
     ret =  gptlstart('spartacus_lw')
 #endif  
-#ifdef OPTIM_CODE
-          call solver_spartacus_lw_opt(config%n_g_lw, nlev,istartcol,iendcol, &
+          call solver_spartacus_lw(config%n_g_lw, nlev,istartcol,iendcol, &
                &  config, thermodynamics, cloud, & 
                &  od_lw, ssa_lw, g_lw, od_lw_cloud, ssa_lw_cloud, g_lw_cloud, &
                &  planck_hl, lw_emission, lw_albedo, flux)
-#else
-          call solver_spartacus_lw(nlev,istartcol,iendcol, &
-               &  config, thermodynamics, cloud, & 
-               &  od_lw, ssa_lw, g_lw, od_lw_cloud, ssa_lw_cloud, g_lw_cloud, &
-               &  planck_hl, lw_emission, lw_albedo, flux)
-#endif
 #ifdef USE_TIMING
     ret =  gptlstop('spartacus_lw')
 #endif  
@@ -505,17 +486,10 @@ contains
     ret =  gptlstart('tripleclouds_lw')
 #endif  
           ! Compute fluxes using the Tripleclouds longwave solver
-#ifdef OPTIM_CODE
-          call solver_tripleclouds_lw_opt(config%n_g_lw,nlev,istartcol,iendcol, &
+          call solver_tripleclouds_lw(config%n_g_lw,nlev,istartcol,iendcol, &
                &  config, cloud, & 
                &  od_lw, ssa_lw, g_lw, od_lw_cloud, ssa_lw_cloud, g_lw_cloud, &
                &  planck_hl, lw_emission, lw_albedo, flux)
-#else
-          call solver_tripleclouds_lw(nlev,istartcol,iendcol, &
-               &  config, cloud, & 
-               &  od_lw, ssa_lw, g_lw, od_lw_cloud, ssa_lw_cloud, g_lw_cloud, &
-               &  planck_hl, lw_emission, lw_albedo, flux)
-#endif
 #ifdef USE_TIMING
     ret =  gptlstop('tripleclouds_lw')
 #endif
@@ -559,19 +533,11 @@ contains
 
 if (lhook) call dr_hook('radiation_interface:radiation_spartacus',0,hook_handle)
 
-#ifdef OPTIM_CODE
-          call solver_spartacus_sw_opt(config%n_g_sw,nlev,istartcol,iendcol, &
+          call solver_spartacus_sw(config%n_g_sw,nlev,istartcol,iendcol, &
                &  config, single_level, thermodynamics, cloud, & 
                &  od_sw, ssa_sw, g_sw, od_sw_cloud, ssa_sw_cloud, &
                &  g_sw_cloud, sw_albedo_direct, sw_albedo_diffuse, &
                &  incoming_sw, flux)
-#else
-          call solver_spartacus_sw(nlev,istartcol,iendcol, &
-               &  config, single_level, thermodynamics, cloud, & 
-               &  od_sw, ssa_sw, g_sw, od_sw_cloud, ssa_sw_cloud, &
-               &  g_sw_cloud, sw_albedo_direct, sw_albedo_diffuse, &
-               &  incoming_sw, flux)
-#endif
 #ifdef USE_TIMING
     ret =  gptlstop('spartacus_sw')
 #endif
@@ -582,19 +548,11 @@ if (lhook) call dr_hook('radiation_interface:radiation_spartacus',1,hook_handle)
 #ifdef USE_TIMING
     ret =  gptlstart('tripleclouds_sw')
 #endif
-#ifdef OPTIM_CODE
-        call solver_tripleclouds_sw_opt(config%n_g_sw,nlev,istartcol,iendcol, &
+        call solver_tripleclouds_sw(config%n_g_sw,nlev,istartcol,iendcol, &
                &  config, single_level, cloud, & 
                &  od_sw, ssa_sw, g_sw, od_sw_cloud, ssa_sw_cloud, &
                &  g_sw_cloud, sw_albedo_direct, sw_albedo_diffuse, &
                &  incoming_sw, flux)
-#else
-        call solver_tripleclouds_sw(nlev,istartcol,iendcol, &
-               &  config, single_level, cloud, & 
-               &  od_sw, ssa_sw, g_sw, od_sw_cloud, ssa_sw_cloud, &
-               &  g_sw_cloud, sw_albedo_direct, sw_albedo_diffuse, &
-               &  incoming_sw, flux)
-#endif
 #ifdef USE_TIMING
     ret =  gptlstop('tripleclouds_sw')
 #endif

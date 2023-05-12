@@ -9,9 +9,8 @@ version 1.6.0-OPT (1 May 2023)
 	- Add new gas optics schemes: RRTMGP and RRTMGP-NN
 	  The implementation, deveopment and testing is described in a GMD paper:
 	  https://doi.org/10.5194/egusphere-2022-1047
-	- Test extensive optimizations across SPARTACUS, TripleClouds and aerosol optics
-	  by compiling with 'OPTIM_CODE=2'; for further speed-up for 32-term ECCKD
-	  models add 'NG_SW=32 NG_LW=32'
+	- Extensive optimizations across SPARTACUS, TripleClouds and aerosol optics
+	  For further speed-up for 32-term ecCKD models add 'NG_SW=32 NG_LW=32'
 	  The optimizations are described in a preprint uploaded to ESS Open Archive:
 	  https://doi.org/10.22541/essoar.168298700.07329865/v1
 

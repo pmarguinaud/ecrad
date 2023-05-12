@@ -52,7 +52,7 @@ contains
     use radiation_cloud, only          : cloud_type
     use radiation_flux, only           : flux_type
     use radiation_two_stream, only     : calc_two_stream_gammas_sw, &
-         &                               calc_reflectance_transmittance_sw, calc_reflectance_transmittance_sw_opt
+         &                               calc_reflectance_transmittance_sw, calc_reflectance_transmittance_sw
     use radiation_adding_ica_sw, only  : adding_ica_sw
     use radiation_cloud_generator, only: cloud_generator
 
@@ -155,25 +155,11 @@ contains
         if (.not. config%do_sw_delta_scaling_with_gases) then
           ! Delta-Eddington scaling has already been performed to the
           ! aerosol part of od, ssa and g
-#if OPTIM_CODE==2
-          call calc_reflectance_transmittance_sw_opt(ng*nlev, &
+          call calc_reflectance_transmittance_sw(ng*nlev, &
                &  cos_sza, od(:,:,jcol), ssa(:,:,jcol), g(:,:,jcol), &
                &  ref_clear, trans_clear, &
                &  ref_dir_clear, trans_dir_diff_clear, &
                &  trans_dir_dir_clear)
-#else
-          do jlev = 1,nlev
-            call calc_two_stream_gammas_sw(ng, &
-                 &  cos_sza, ssa(:,jlev,jcol), g(:,jlev,jcol), &
-                 &  gamma1, gamma2, gamma3)
-            call calc_reflectance_transmittance_sw(ng, &
-                 &  cos_sza, od(:,jlev,jcol), ssa(:,jlev,jcol), &
-                 &  gamma1, gamma2, gamma3, &
-                 &  ref_clear(:,jlev), trans_clear(:,jlev), &
-                 &  ref_dir_clear(:,jlev), trans_dir_diff_clear(:,jlev), &
-                 &  trans_dir_dir_clear(:,jlev) )
-          end do
-#endif
         else
           ! Apply delta-Eddington scaling to the aerosol-gas mixture
           do jlev = 1,nlev
@@ -181,23 +167,11 @@ contains
             ssa_total = ssa(:,jlev,jcol)
             g_total   =   g(:,jlev,jcol)
             call delta_eddington(od_total, ssa_total, g_total)
-#if OPTIM_CODE==2
-            call calc_reflectance_transmittance_sw_opt(ng, &
+            call calc_reflectance_transmittance_sw(ng, &
                  &  cos_sza, od_total, ssa_total, g_total, &
                  &  ref_clear(:,jlev),  trans_clear(:,jlev), &
                  &  ref_dir_clear(:,jlev), trans_dir_diff_clear(:,jlev), &
                  &  trans_dir_dir_clear(:,jlev) )
-#else
-            call calc_two_stream_gammas_sw(ng, &
-                 &  cos_sza, ssa_total, g_total, &
-                 &  gamma1, gamma2, gamma3)
-            call calc_reflectance_transmittance_sw(ng, &
-                 &  cos_sza, od_total, ssa_total, &
-                 &  gamma1, gamma2, gamma3, &
-                 &  ref_clear(:,jlev), trans_clear(:,jlev), &
-                 &  ref_dir_clear(:,jlev), trans_dir_diff_clear(:,jlev), &
-                 &  trans_dir_dir_clear(:,jlev) )
-#endif
           end do
         end if
 
@@ -277,24 +251,11 @@ contains
 
               ! Compute cloudy-sky reflectance, transmittance etc at
               ! each model level
-#if OPTIM_CODE==2
-              call calc_reflectance_transmittance_sw_opt(ng, &
+              call calc_reflectance_transmittance_sw(ng, &
                    &  cos_sza, od_total, ssa_total, g_total, &
                    &  reflectance(:,jlev), transmittance(:,jlev), &
                    &  ref_dir(:,jlev), trans_dir_diff(:,jlev), &
                    &  trans_dir_dir(:,jlev))
-#else
-              call calc_two_stream_gammas_sw(ng, &
-                   &  cos_sza, ssa_total, g_total, &
-                   &  gamma1, gamma2, gamma3)
-
-              call calc_reflectance_transmittance_sw(ng, &
-                   &  cos_sza, od_total, ssa_total, &
-                   &  gamma1, gamma2, gamma3, &
-                   &  reflectance(:,jlev), transmittance(:,jlev), &
-                   &  ref_dir(:,jlev), trans_dir_diff(:,jlev), &
-                   &  trans_dir_dir(:,jlev) )
-#endif
             else
               ! Clear-sky layer: copy over clear-sky values
               reflectance(:,jlev) = ref_clear(:,jlev)

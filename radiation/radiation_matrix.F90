@@ -1492,8 +1492,8 @@ contains
     integer,    intent(in)                                :: ng_sw_in, nlev_b
     real(jprb), intent(in),  dimension(ng_sw*nlev_b,9,9)  :: A
     real(jprb), intent(out), dimension(ng_sw*nlev_b,9,9)  :: C
-    integer    :: j1, j2, j3
     !dir$ assume_aligned A:64,C:64
+    integer    :: j1, j2, j3
     
     ! Do the top-left (C, D, F, G)
     do j2 = 1,6  
@@ -1533,9 +1533,8 @@ contains
     integer,    intent(in)                    :: ng_sw_in, nlev_b
     real(jprb), intent(in), dimension(ng_sw*nlev_b,9,9) :: A, B
     real(jprb), intent(out),dimension(ng_sw*nlev_b,9,9) :: C
-    integer    :: j1, j2, j3
     !dir$ assume_aligned A:64,B:64,C:64
-
+    integer    :: j1, j2, j3
     !     (C    D    E)
     ! A = (F=   G    H)
     !     (0    0    I)
@@ -1568,8 +1567,8 @@ contains
     integer,    intent(in)                              :: ng_sw_in, nlev_b
     real(jprb), intent(in), dimension(ng_sw*nlev_b,9,9) :: A, B
     real(jprb), intent(out),dimension(ng_sw*nlev_b,9,9) :: C
-    integer    :: j1, j2, j22
     !dir$ assume_aligned A:64,B:64,C:64
+    integer    :: j1, j2, j22
     ! Input matrices have pattern
     !     (C    D     E)
     ! A = (F=-D G=-C  H)
@@ -1603,8 +1602,8 @@ contains
     integer,    intent(in)                              :: n
     real(jprb), intent(in), dimension(n,9,9) :: A, B
     real(jprb), intent(out),dimension(n,9,9) :: C
-    integer    :: j1, j2, j22
     !dir$ assume_aligned A:64,B:64,C:64
+    integer    :: j1, j2, j22
     ! Input matrices have pattern
     !     (C    D     E)
     ! A = (F=-D G=-C  H)
@@ -1641,13 +1640,13 @@ contains
     integer,    intent(in)    :: ng_sw_in, nlev_b
     real(jprb), intent(inout) :: A(ng_sw*nlev_b,9,9) ! A=LU is corrupted
     real(jprb), intent(inout) :: B(ng_sw*nlev_b,9,9) ! X = B, both input and output
+    !dir$ assume_aligned A:64,B:64
     ! Local variables
     integer :: j1, j2, j3
     integer, parameter :: m = 9
     integer, parameter :: mblock = 3  ! m/3   
     integer, parameter :: m2block = 6 ! 2*mblock 
     real(jprb) :: diagdiv(ng_sw*nlev_b,9)
-    !dir$ assume_aligned A:64,B:64
     !     (C   D  E)
     ! A = (-D -C  H)
     !     (0   0  I)
@@ -2030,7 +2029,7 @@ contains
 
     integer,    intent(in)      :: N, ng_sw_in, nlev_b
     real(jprb), intent(inout)   :: A(ng_sw*nlev_b,9,9)
-
+    !dir$ assume_aligned A:64
     real(jprb), parameter :: theta(3) = (/4.258730016922831e-01_jprb, &
          &                                1.880152677804762e+00_jprb, &
          &                                3.925724783138660e+00_jprb/) 
@@ -2044,7 +2043,6 @@ contains
     integer    :: j1, j2, j3, jg, minexpo, nrepeat, jS, jE
     integer    :: expo(ng_sw*nlev_b)
     real(jphook) :: hook_handle
-    !dir$ assume_aligned A:64
 #ifdef USE_TIMING
     ret =  gptlstart('expm_sw')
 #endif 
@@ -2256,85 +2254,84 @@ contains
   ! diagonalization method and is a slight generalization of the
   ! solution provided in the appendix of Hogan et al. (GMD 2018),
   ! which assumed c==d.
-  subroutine fast_expm_exchange_3(n,iend,a,b,c,d,R)
+  ! subroutine fast_expm_exchange_3(n,iend,a,b,c,d,R)
 
-    use yomhook, only : lhook, dr_hook, jphook
+  !   use yomhook, only : lhook, dr_hook, jphook
 
-    real(jprb), parameter :: my_epsilon = 1.0e-12_jprb
+  !   real(jprb), parameter :: my_epsilon = 1.0e-12_jprb
 
-    integer,                      intent(in)  :: n, iend
-    real(jprb), dimension(n),     intent(in)  :: a, b, c, d
-    real(jprb), dimension(n,3,3), intent(out) :: R
+  !   integer,                      intent(in)  :: n, iend
+  !   real(jprb), dimension(n),     intent(in)  :: a, b, c, d
+  !   real(jprb), dimension(n,3,3), intent(out) :: R
 
-    ! Eigenvectors
-    real(jprb), dimension(iend,3,3) :: V
+  !   ! Eigenvectors
+  !   real(jprb), dimension(iend,3,3) :: V
 
-    ! Non-zero Eigenvalues
-    real(jprb), dimension(iend) :: lambda1, lambda2
+  !   ! Non-zero Eigenvalues
+  !   real(jprb), dimension(iend) :: lambda1, lambda2
 
-    ! Diagonal matrix of the exponential of the eigenvalues
-    real(jprb), dimension(iend,3) :: diag
+  !   ! Diagonal matrix of the exponential of the eigenvalues
+  !   real(jprb), dimension(iend,3) :: diag
 
-    ! Result of diag right-divided by V
-    real(jprb), dimension(iend,3,3) :: diag_rdivide_V
+  !   ! Result of diag right-divided by V
+  !   real(jprb), dimension(iend,3,3) :: diag_rdivide_V
 
-    ! Intermediate arrays
-    real(jprb), dimension(iend) :: tmp1, tmp2
+  !   ! Intermediate arrays
+  !   real(jprb), dimension(iend) :: tmp1, tmp2
 
-    integer :: j1, j2
+  !   integer :: j1, j2
 
-    real(jphook) :: hook_handle
+  !   real(jphook) :: hook_handle
 
-    if (lhook) call dr_hook('radiation_matrix:fast_expm_exchange_3',0,hook_handle)
+  !   if (lhook) call dr_hook('radiation_matrix:fast_expm_exchange_3',0,hook_handle)
 
-    ! Eigenvalues
-    tmp1 = 0.5_jprb * (a(1:iend)+b(1:iend)+c(1:iend)+d(1:iend))
-    tmp2 = sqrt(tmp1*tmp1 - (a(1:iend)*c(1:iend) + a(1:iend)*d(1:iend) + b(1:iend)*d(1:iend)))
-    lambda1 = -tmp1 + tmp2
-    lambda2 = -tmp1 - tmp2
+  !   ! Eigenvalues
+  !   tmp1 = 0.5_jprb * (a(1:iend)+b(1:iend)+c(1:iend)+d(1:iend))
+  !   tmp2 = sqrt(tmp1*tmp1 - (a(1:iend)*c(1:iend) + a(1:iend)*d(1:iend) + b(1:iend)*d(1:iend)))
+  !   lambda1 = -tmp1 + tmp2
+  !   lambda2 = -tmp1 - tmp2
 
-    ! Eigenvectors, with securities such taht if a--d are all zero
-    ! then V is non-singular and the identity matrix is returned in R;
-    ! note that lambdaX is typically negative so we need a
-    ! sign-preserving security
-    V(1:iend,1,1) = max(my_epsilon, b(1:iend)) &
-         &  / sign(max(my_epsilon, abs(a(1:iend) + lambda1)), a(1:iend) + lambda1)
-    V(1:iend,1,2) = b(1:iend) &
-         &  / sign(max(my_epsilon, abs(a(1:iend) + lambda2)), a(1:iend) + lambda2)
-    V(1:iend,1,3) = b(1:iend) / max(my_epsilon, a(1:iend))
-    V(1:iend,2,:) = 1.0_jprb
-    V(1:iend,3,1) = c(1:iend) &
-         &  / sign(max(my_epsilon, abs(d(1:iend) + lambda1)), d(1:iend) + lambda1)
-    V(1:iend,3,2) = c(1:iend) &
-         &  / sign(max(my_epsilon, abs(d(1:iend) + lambda2)), d(1:iend) + lambda2)
-    V(1:iend,3,3) = max(my_epsilon, c(1:iend)) / max(my_epsilon, d(1:iend))
+  !   ! Eigenvectors, with securities such taht if a--d are all zero
+  !   ! then V is non-singular and the identity matrix is returned in R;
+  !   ! note that lambdaX is typically negative so we need a
+  !   ! sign-preserving security
+  !   V(1:iend,1,1) = max(my_epsilon, b(1:iend)) &
+  !        &  / sign(max(my_epsilon, abs(a(1:iend) + lambda1)), a(1:iend) + lambda1)
+  !   V(1:iend,1,2) = b(1:iend) &
+  !        &  / sign(max(my_epsilon, abs(a(1:iend) + lambda2)), a(1:iend) + lambda2)
+  !   V(1:iend,1,3) = b(1:iend) / max(my_epsilon, a(1:iend))
+  !   V(1:iend,2,:) = 1.0_jprb
+  !   V(1:iend,3,1) = c(1:iend) &
+  !        &  / sign(max(my_epsilon, abs(d(1:iend) + lambda1)), d(1:iend) + lambda1)
+  !   V(1:iend,3,2) = c(1:iend) &
+  !        &  / sign(max(my_epsilon, abs(d(1:iend) + lambda2)), d(1:iend) + lambda2)
+  !   V(1:iend,3,3) = max(my_epsilon, c(1:iend)) / max(my_epsilon, d(1:iend))
     
-    diag(:,1) = exp(lambda1)
-    diag(:,2) = exp(lambda2)
-    diag(:,3) = 1.0_jprb
+  !   diag(:,1) = exp(lambda1)
+  !   diag(:,2) = exp(lambda2)
+  !   diag(:,3) = 1.0_jprb
 
-    ! Compute diag_rdivide_V = diag * V^-1
-    call diag_mat_right_divide_3(iend,iend,V,diag,diag_rdivide_V)
+  !   ! Compute diag_rdivide_V = diag * V^-1
+  !   call diag_mat_right_divide_3(iend,iend,V,diag,diag_rdivide_V)
 
-    ! Compute V * diag_rdivide_V
-    do j1 = 1,3
-      do j2 = 1,3
-        R(1:iend,j2,j1) = V(1:iend,j2,1)*diag_rdivide_V(1:iend,1,j1) &
-             &          + V(1:iend,j2,2)*diag_rdivide_V(1:iend,2,j1) &
-             &          + V(1:iend,j2,3)*diag_rdivide_V(1:iend,3,j1)
-      end do
-    end do
+  !   ! Compute V * diag_rdivide_V
+  !   do j1 = 1,3
+  !     do j2 = 1,3
+  !       R(1:iend,j2,j1) = V(1:iend,j2,1)*diag_rdivide_V(1:iend,1,j1) &
+  !            &          + V(1:iend,j2,2)*diag_rdivide_V(1:iend,2,j1) &
+  !            &          + V(1:iend,j2,3)*diag_rdivide_V(1:iend,3,j1)
+  !     end do
+  !   end do
 
-    if (lhook) call dr_hook('radiation_matrix:fast_expm_exchange_3',1,hook_handle)
+  !   if (lhook) call dr_hook('radiation_matrix:fast_expm_exchange_3',1,hook_handle)
 
-  end subroutine fast_expm_exchange_3
+  ! end subroutine fast_expm_exchange_3
 
-
-  subroutine fast_expm_exchange_3_opt(ng_sw_in,R)
+  subroutine fast_expm_exchange_3(ng_sw_in,R)
 
     use yomhook, only : lhook, dr_hook, jphook
 
-! #ifdef SINGLE_PRECISION
+! #ifdef PARKIND1_SINGLE
 !     real(jprb), parameter :: my_epsilon = 10.0_jprb * epsilon(1.0_jprb)
 ! #else
     real(jprb), parameter :: my_epsilon = 1.0e-12_jprb
@@ -2376,7 +2373,7 @@ contains
 !     ret =  gptlstart('fastexpm')
 ! #endif 
 
-    if (lhook) call dr_hook('radiation_matrix:fast_expm_exchange_3_opt',0,hook_handle)
+    if (lhook) call dr_hook('radiation_matrix:fast_expm_exchange_3',0,hook_handle)
     associate(a=>R(:,2,1),b=>R(:,1,2),c=>R(:,3,2),d=>R(:,2,3))
       ! Eigenvalues
       tmp1 = 0.5_jprb * (a(:)+b(:)+c(:)+d(:))
@@ -2535,9 +2532,9 @@ contains
 !     ret =  gptlstop('fastexpm')
 ! #endif 
 
-  if (lhook) call dr_hook('radiation_matrix:fast_expm_exchange_3_opt',1,hook_handle)
+  if (lhook) call dr_hook('radiation_matrix:fast_expm_exchange_3',1,hook_handle)
 
-  end subroutine fast_expm_exchange_3_opt
+  end subroutine fast_expm_exchange_3
 !  generic :: fast_expm_exchange => fast_expm_exchange_2, fast_expm_exchange_3
 
 
