@@ -17,6 +17,7 @@
 !   2017-04-22  R. Hogan  Store surface fluxes at all g-points
 !   2017-07-12  R. Hogan  Call fast adding method if only clouds scatter
 !   2017-10-23  R. Hogan  Renamed single-character variables
+!   2022-05-12  P. Ukkonen Optimized reflectance-transmittance and broadband flux
 
 module radiation_mcica_lw
 
@@ -125,6 +126,9 @@ contains
     ! Total cloud cover output from the cloud generator
     real(jprb) :: total_cloud_cover
 
+    ! Faster broadband flux computation 
+    real(jprb) :: sums_up, sums_dn  
+
     ! Identify clear-sky layers
     logical :: is_clear_sky_layer(nlev)
 
@@ -204,8 +208,16 @@ contains
       end if
 
       ! Sum over g-points to compute broadband fluxes
-      flux%lw_up_clear(jcol,:) = sum(flux_up_clear,1)
-      flux%lw_dn_clear(jcol,:) = sum(flux_dn_clear,1)
+      do jlev = 1, nlev+1
+        sums_up = 0.0_jprb; sums_dn = 0.0_jprb
+        !$omp simd reduction(+:sums_up, sums_dn)
+        do jg = 1, ng
+          sums_up = sums_up + flux_up_clear(jg,jlev)
+          sums_dn = sums_dn + flux_dn_clear(jg,jlev)
+        end do
+        flux%lw_up_clear(jcol,jlev) = sums_up 
+        flux%lw_dn_clear(jcol,jlev) = sums_dn
+      end do
       ! Store surface spectral downwelling fluxes
       flux%lw_dn_surf_clear_g(:,jcol) = flux_dn_clear(:,nlev+1)
 
@@ -346,9 +358,16 @@ contains
         end if
         
         ! Store overcast broadband fluxes
-        flux%lw_up(jcol,:) = sum(flux_up,1)
-        flux%lw_dn(jcol,:) = sum(flux_dn,1)
-
+        do jlev = 1, nlev+1
+          sums_up = 0.0_jprb; sums_dn = 0.0_jprb
+          !$omp simd reduction(+:sums_up, sums_dn)
+          do jg = 1, ng
+            sums_up = sums_up + flux_up(jg,jlev)
+            sums_dn = sums_dn + flux_dn(jg,jlev)
+          end do
+          flux%lw_up(jcol,jlev) = sums_up 
+          flux%lw_dn(jcol,jlev) = sums_dn
+        end do
         ! Cloudy flux profiles currently assume completely overcast
         ! skies; perform weighted average with clear-sky profile
         flux%lw_up(jcol,:) =  total_cloud_cover *flux%lw_up(jcol,:) &

@@ -16,6 +16,7 @@
 !   2017-04-11  R. Hogan  Receive albedos at g-points
 !   2017-04-22  R. Hogan  Store surface fluxes at all g-points
 !   2017-10-23  R. Hogan  Renamed single-character variables
+!   2022-05-12  P. Ukkonen Optimized reflectance-transmittance and broadband flux
 
 module radiation_mcica_sw
 
@@ -208,7 +209,6 @@ contains
         
         ! Sum over g-points to compute and save clear-sky broadband
         ! fluxes
- 
         do jlev = 1, nlev+1
           sums_up = 0.0_jprb; sums_dn = 0.0_jprb; sums_dn_dir = 0.0_jprb
           !$omp simd reduction(+:sums_up, sums_dn, sums_dn_dir)
