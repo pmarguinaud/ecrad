@@ -54,10 +54,7 @@ contains
          &                               calc_reflectance_transmittance_sw, calc_reflectance_transmittance_sw_opt
     use radiation_adding_ica_sw, only  : adding_ica_sw
     use radiation_cloud_generator, only: cloud_generator
-#ifdef USE_TIMING
-    ! Timing library
-    use gptl,                  only: gptlstart, gptlstop
-#endif
+
     implicit none
 
     ! Inputs
@@ -130,7 +127,7 @@ contains
     real(jprb) :: sums_up, sums_dn, sums_dn_dir
 
     ! Number of g points
-    integer :: ng, ret
+    integer :: ng
 
     ! Loop indices for level, column and g point
     integer :: jlev, jcol, jg
