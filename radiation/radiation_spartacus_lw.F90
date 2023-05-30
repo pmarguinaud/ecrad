@@ -1249,14 +1249,22 @@ contains
         ! Store the broadband fluxes
         if (is_clear_sky_layer(jlev)) then
           sums_up = 0.0_jprb; sums_dn = 0.0_jprb
+#ifdef __NEC__
+          !NEC$ shortloop
+#else
           !$omp simd reduction(+:sums_up, sums_dn)
+#endif
           do jg = 1, ng  
             sums_up = sums_up + flux_up_above(jg,1) 
             sums_dn = sums_dn + flux_dn_above(jg,1)
           end do
         else 
           sums_up = 0.0_jprb; sums_dn = 0.0_jprb
+#ifdef __NEC__
+          !NEC$ shortloop
+#else
           !$omp simd reduction(+:sums_up, sums_dn)
+#endif
           do jg = 1, ng  
             sums_up = sums_up + flux_up_above(jg,1) + flux_up_above(jg,2) + flux_up_above(jg,3)
             sums_dn = sums_dn + flux_dn_above(jg,1) + flux_dn_above(jg,2) + flux_dn_above(jg,3)
@@ -1267,7 +1275,11 @@ contains
 
         if (config%do_clear) then
           sums_up = 0.0_jprb; sums_dn = 0.0_jprb
+#ifdef __NEC__
+          !NEC$ shortloop
+#else
           !$omp simd reduction(+:sums_up, sums_dn)
+#endif
           do jg = 1, ng  
             sums_up = sums_up + flux_up_clear(jg)
             sums_dn = sums_dn + flux_dn_clear(jg)

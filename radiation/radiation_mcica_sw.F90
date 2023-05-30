@@ -125,7 +125,11 @@ contains
     real(jprb) :: total_cloud_cover
 
     ! Faster broadband flux computation 
+#ifdef __NEC__
+    real(jprb), dimension(nlev+1,3) :: sum_aux
+#else
     real(jprb) :: sums_up, sums_dn, sums_dn_dir
+#endif
 
     ! Number of g points
     integer :: ng
@@ -181,8 +185,21 @@ contains
              &  ref_clear, trans_clear, ref_dir_clear, trans_dir_diff_clear, &
              &  trans_dir_dir_clear, flux_up, flux_dn_diffuse, flux_dn_direct)
         
-        ! Sum over g-points to compute and save clear-sky broadband
-        ! fluxes
+        ! Sum over g-points to compute and save clear-sky broadband fluxes
+#ifdef __NEC__
+        ! Vectorize over levels when doing the broadband sum (8x faster on NEC)
+        sum_aux(:,:) = 0._jprb
+        do jg = 1, ng
+          do jlev = 1, nlev+1
+            sum_aux(jlev,1) = sum_aux(jlev,1) + flux_up(jg,jlev)
+            sum_aux(jlev,2) = sum_aux(jlev,2) + flux_dn_direct(jg,jlev)
+            sum_aux(jlev,3) = sum_aux(jlev,3) + flux_dn_diffuse(jg,jlev)
+          end do
+        end do
+        flux%sw_up_clear(jcol,:) = sum_aux(:,1)
+        flux%sw_dn_clear(jcol,:) = sum_aux(:,2) + sum_aux(:,3)
+        if (allocated(flux%sw_dn_direct_clear)) flux%sw_dn_direct_clear(jcol,:) = sum_aux(:,2)
+#else
         do jlev = 1, nlev+1
           sums_up = 0.0_jprb; sums_dn = 0.0_jprb; sums_dn_dir = 0.0_jprb
           !$omp simd reduction(+:sums_up, sums_dn, sums_dn_dir)
@@ -195,7 +212,7 @@ contains
           flux%sw_dn_clear(jcol,jlev) = sums_dn + sums_dn_dir
           if (allocated(flux%sw_dn_direct_clear)) flux%sw_dn_direct_clear(jcol,jlev) = sums_dn_dir
         end do
-
+#endif
         ! Store spectral downwelling fluxes at surface
         flux%sw_dn_diffuse_surf_clear_g(:,jcol) = flux_dn_diffuse(:,nlev+1)
         flux%sw_dn_direct_surf_clear_g(:,jcol)  = flux_dn_direct(:,nlev+1)
@@ -273,6 +290,20 @@ contains
                &  trans_dir_dir, flux_up, flux_dn_diffuse, flux_dn_direct)
           
           ! Store overcast broadband fluxes
+#ifdef __NEC__
+          ! Vectorize over levels when doing the broadband sum (8x faster on NEC)
+          sum_aux(:,:) = 0._jprb
+          do jg = 1, ng
+            do jlev = 1, nlev+1
+              sum_aux(jlev,1) = sum_aux(jlev,1) + flux_up(jg,jlev)
+              sum_aux(jlev,2) = sum_aux(jlev,2) + flux_dn_direct(jg,jlev)
+              sum_aux(jlev,3) = sum_aux(jlev,3) + flux_dn_diffuse(jg,jlev)
+            end do
+          end do
+          flux%sw_up(jcol,:) = sum_aux(:,1)
+          flux%sw_dn(jcol,:) = sum_aux(:,2) + sum_aux(:,3)
+          if (allocated(flux%sw_dn_direct)) flux%sw_dn_direct(jcol,:) = sum_aux(:,2)
+#else
           do jlev = 1, nlev+1
             sums_up = 0.0_jprb; sums_dn = 0.0_jprb; sums_dn_dir = 0.0_jprb
             !$omp simd reduction(+:sums_up, sums_dn, sums_dn_dir)
@@ -285,7 +316,7 @@ contains
             flux%sw_dn(jcol,jlev) = sums_dn + sums_dn_dir
             if (allocated(flux%sw_dn_direct)) flux%sw_dn_direct(jcol,jlev) = sums_dn_dir
           end do
-
+#endif
           ! Cloudy flux profiles currently assume completely overcast
           ! skies; perform weighted average with clear-sky profile
           flux%sw_up(jcol,:) =  total_cloud_cover *flux%sw_up(jcol,:) &

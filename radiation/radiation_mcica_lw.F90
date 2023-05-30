@@ -125,8 +125,11 @@ contains
     real(jprb) :: total_cloud_cover
 
     ! Faster broadband flux computation 
+#ifdef __NEC__
+    real(jprb), dimension(nlev+1,2) :: sum_aux
+#else
     real(jprb) :: sums_up, sums_dn  
-
+#endif
     ! Identify clear-sky layers
     logical :: is_clear_sky_layer(nlev)
 
@@ -186,6 +189,18 @@ contains
       end if
 
       ! Sum over g-points to compute broadband fluxes
+#ifdef __NEC__
+        ! Vectorize over levels when doing the broadband sum (8x faster on NEC)
+        sum_aux(:,:) = 0._jprb
+        do jg = 1, ng
+          do jlev = 1, nlev+1
+            sum_aux(jlev,1) = sum_aux(jlev,1) + flux_up_clear(jg,jlev)
+            sum_aux(jlev,2) = sum_aux(jlev,2) + flux_dn_clear(jg,jlev)
+          end do
+        end do
+        flux%lw_up_clear(jcol,:) = sum_aux(:,1)
+        flux%lw_dn_clear(jcol,:) = sum_aux(:,2)
+#else
       do jlev = 1, nlev+1
         sums_up = 0.0_jprb; sums_dn = 0.0_jprb
         !$omp simd reduction(+:sums_up, sums_dn)
@@ -196,9 +211,9 @@ contains
         flux%lw_up_clear(jcol,jlev) = sums_up 
         flux%lw_dn_clear(jcol,jlev) = sums_dn
       end do
+#endif
       ! Store surface spectral downwelling fluxes
       flux%lw_dn_surf_clear_g(:,jcol) = flux_dn_clear(:,nlev+1)
-
       ! Do cloudy-sky calculation; add a prime number to the seed in
       ! the longwave
       call cloud_generator(ng, nlev, config%i_overlap_scheme, &
@@ -321,6 +336,17 @@ contains
         end if
         
         ! Store overcast broadband fluxes
+#ifdef __NEC__
+        sum_aux(:,:) = 0._jprb
+        do jg = 1, ng
+          do jlev = 1, nlev+1
+            sum_aux(jlev,1) = sum_aux(jlev,1) + flux_up(jg,jlev)
+            sum_aux(jlev,2) = sum_aux(jlev,2) + flux_dn(jg,jlev)
+          end do
+        end do
+        flux%lw_up(jcol,:) = sum_aux(:,1)
+        flux%lw_dn(jcol,:) = sum_aux(:,2)
+#else
         do jlev = 1, nlev+1
           sums_up = 0.0_jprb; sums_dn = 0.0_jprb
           !$omp simd reduction(+:sums_up, sums_dn)
@@ -331,6 +357,7 @@ contains
           flux%lw_up(jcol,jlev) = sums_up 
           flux%lw_dn(jcol,jlev) = sums_dn
         end do
+#endif
         ! Cloudy flux profiles currently assume completely overcast
         ! skies; perform weighted average with clear-sky profile
         flux%lw_up(jcol,:) =  total_cloud_cover *flux%lw_up(jcol,:) &
