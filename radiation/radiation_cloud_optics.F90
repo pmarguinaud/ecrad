@@ -277,13 +277,8 @@ contains
 
     associate(ho => config%cloud_optics)
 
-      !$ACC DATA PRESENT (config, thermodynamics, thermodynamics%pressure_hl, &
-      !$ACC              cloud, cloud%fraction, cloud%q_liq, cloud%q_ice, &
-      !$ACC              cloud%re_liq, cloud%re_ice) &
-      !$ACC      PRESENT(od_lw_cloud, g_lw_cloud, ssa_lw_cloud, od_sw_cloud, g_sw_cloud, ssa_sw_cloud)
-
       ! Array-wise assignment
-      !$ACC PARALLEL DEFAULT(NONE) ASYNC(1)
+      !$ACC PARALLEL DEFAULT(PRESENT) ASYNC(1)
       !$ACC LOOP GANG COLLAPSE(2)
       do jcol=istartcol, iendcol
         do jlev=1, nlev
@@ -306,7 +301,7 @@ contains
       end do
       !$ACC END PARALLEL
 
-      !$ACC PARALLEL DEFAULT(NONE) ASYNC(1)
+      !$ACC PARALLEL DEFAULT(PRESENT) ASYNC(1)
       !$ACC LOOP SEQ
       do jlev = 1,nlev
         !$ACC LOOP GANG VECTOR &
@@ -528,9 +523,7 @@ contains
         end do ! Loop over column
       end do ! Loop over level
 
-      !$ACC END PARALLEL
-      !$ACC WAIT
-      !$ACC END DATA ! PRESENT
+     !$ACC END PARALLEL
 
     end associate
 
