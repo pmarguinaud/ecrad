@@ -132,15 +132,15 @@ help:
 	@echo "  clean                Remove all compiled files"
 
 ifndef FIATDIR
-build: directories libifsaux libdummydrhook libutilities libifsrrtm librrtmgp \
-	libradiation driver ifsdriver symlinks
+build: directories libifsaux libdummydrhook libutilities libifsrrtm \
+	libradiation alldrivers symlinks
 libradiation libutilities: libdummydrhook
 else
 # Note that if we are using Dr Hook from the fiat library we don't
 # want to create mod/yomhook.mod as this can sometimes be found before
 # the one in the fiat directory leading to an error at link stage
-build: directories libifsaux libutilities libifsrrtm librrtmgp libradiation \
-	driver ifsdriver symlinks
+build: directories libifsaux libutilities libifsrrtm libradiation \
+	alldrivers symlinks
 endif
 
 # git cannot store empty directories so they may need to be created
@@ -178,6 +178,9 @@ librrtmgp: libifsaux
 
 libradiation: libifsrrtm libutilities libifsaux
 	cd radiation && $(MAKE)
+
+alldrivers: libifsaux libifsrrtm librrtmgp libutilities libradiation libifs
+	cd driver && $(MAKE) all
 
 driver: libifsaux libifsrrtm librrtmgp libutilities libradiation
 	cd driver && $(MAKE) driver
