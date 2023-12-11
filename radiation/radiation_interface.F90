@@ -182,6 +182,7 @@ contains
 
     type(config_type), intent(in)    :: config
     type(gas_type),    intent(inout) :: gas
+    logical, optional, intent(in) :: lacc
 
     if (config%i_gas_model_sw == IGasModelMonochromatic) then
       call set_gas_units_mono(gas)
@@ -189,7 +190,7 @@ contains
          &  .or. config%i_gas_model_lw == IGasModelIFSRRTMG) then
       ! Convert to mass-mixing ratio for RRTMG; note that ecCKD can
       ! work with this but performs an internal scaling
-      call set_gas_units_ifs(gas)
+      call set_gas_units_ifs(gas, lacc=lacc)
     elseif (config%i_gas_model_sw == IGasModelRRTMGP &
          &  .or. config%i_gas_model_lw == IGasModelRRTMGP &
          &  .or. config%i_gas_model_sw == IGasModelRRTMGP_NN &
