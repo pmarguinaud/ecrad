@@ -412,7 +412,9 @@ contains
 !               &  config, thermodynamics, gas, aerosol, &
 !               &  od_lw, ssa_lw, g_lw, od_sw, ssa_sw, g_sw)
         else
-          call add_aerosol_optics(nlev,istartcol,iendcol, &
+          call add_aerosol_optics(config%n_g_sw, config%n_g_lw, &
+               &  config%n_bands_sw, config%n_bands_lw,  &
+               &  nlev,istartcol,iendcol, &
                &  config, thermodynamics, gas, aerosol, &
                &  od_lw, ssa_lw, g_lw, od_sw, ssa_sw, g_sw)
         end if

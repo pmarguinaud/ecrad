@@ -44,6 +44,15 @@ ifdef SINGLE_PRECISION
 CPPFLAGS += -DPARKIND1_SINGLE
 endif
 
+# Option to declare number of g-points (inner dimension) at compile time, beneficial when NG is small
+# make PROFILE=... NG_SW=32 NG_LW=32 (when using 32-term ECCKD models)
+ifdef NG_SW
+CPPFLAGS += -DNG_SW=$(NG_SW)
+endif
+ifdef NG_LW
+CPPFLAGS += -DNG_LW=$(NG_LW)
+endif
+
 # ------------- NEW FOR ECRAD+RRTMGP--------------
 
 # BLAS library: requisite for RRTMGP-NN
@@ -116,6 +125,7 @@ help:
 	@echo "Other possible arguments are:"
 	@echo "  DEBUG=1              Compile with debug settings on and optimizations off"
 	@echo "  SINGLE_PRECISION=1   Compile with single precision"
+	@echo "  NG_SW=32 NG_LW=32    Compile with spectral dimension as compile time constant to improve performance, in this case for 32-term ecCKD models
 	@echo "  FIATDIR=/my/path     Compile with Dr Hook, specifying the directory containing lib/libfiat.so and module/fiat/yomhook.mod"
 	@echo "  test                 Run test cases in test directory"
 	@echo "  clean                Remove all compiled files"
