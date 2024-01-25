@@ -44,15 +44,31 @@ ifdef SINGLE_PRECISION
 CPPFLAGS += -DPARKIND1_SINGLE
 endif
 
+# ------------- NEW FOR ECRAD+RRTMGP--------------
+
+# BLAS library: requisite for RRTMGP-NN
+ifeq ($(BLASLIB),blis)
+BLAS_INCLUDE = -I$(BLAS_DIR)/include/blis
+LIBS_BLAS    = $(BLAS_DIR)/lib/libblis.a -lm -lpthread
+else ifeq ($(BLASLIB),blis-amd)
+BLAS_INCLUDE  = -I$(BLAS_DIR)/include
+LIBS_BLAS     = $(BLAS_DIR)/lib/libblis-mt.a -lm -lpthread
+else ifeq ($(BLASLIB),openblas)
+LIBS_BLAS     = $(OPENBLAS_LIB)
+else ifeq ($(BLASLIB),mkl)
+BLAS_INCLUDE  = -I"${MKLROOT}/include"
+LIBS_BLAS     =  -L${MKLROOT}/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl
+endif
+
 # If PRINT_ENTRAPMENT_DATA=1 was given on the "make" command line
 # then the SPARTACUS shortwave solver will write data to fort.101 and
 # fort.102
 ifdef PRINT_ENTRAPMENT_DATA
-CPPFLAGS += -DPRINT_ENTRAPMENT_DATA 
+CPPFLAGS += -DPRINT_ENTRAPMENT_DATA
 endif
 # For backwards compatibility we allow the following as well
 ifdef PRINT_ENCROACHMENT_DATA
-CPPFLAGS += -DPRINT_ENTRAPMENT_DATA 
+CPPFLAGS += -DPRINT_ENTRAPMENT_DATA
 endif
 # Allow the capability to write NetCDF4/HDF5 files, provided the code
 # is compiled against the NetCDF4 library
@@ -70,9 +86,9 @@ endif
 # Consolidate flags
 export FC
 export FCFLAGS = $(WARNFLAGS) $(BASICFLAGS) $(CPPFLAGS) -I../include \
-	$(OPTFLAGS) $(DEBUGFLAGS) $(NETCDF_INCLUDE) $(OMPFLAG)
+	$(OPTFLAGS) $(DEBUGFLAGS) $(BLAS_INCLUDE) $(NETCDF_INCLUDE) $(OMPFLAG)
 export LIBS    = $(LDFLAGS) -L../lib -lradiation -lutilities \
-	-lifsrrtm -lifsaux $(FCLIBS) $(NETCDF_LIB) $(OMPFLAG)
+	-lifsrrtm -lifsaux -lrrtmgp -lneural -lstdc++ $(FCLIBS) $(LIBS_BLAS) $(NETCDF_LIB) $(OMPFLAG)
 
 # Do we include Dr Hook from ECMWF's fiat library?
 ifdef FIATDIR
@@ -105,18 +121,18 @@ help:
 	@echo "  clean                Remove all compiled files"
 
 ifndef FIATDIR
-build: directories libifsaux libdummydrhook libutilities libifsrrtm \
+build: directories libifsaux libdummydrhook libutilities libifsrrtm librrtmgp \
 	libradiation driver ifsdriver symlinks
 libradiation libutilities: libdummydrhook
 else
 # Note that if we are using Dr Hook from the fiat library we don't
 # want to create mod/yomhook.mod as this can sometimes be found before
 # the one in the fiat directory leading to an error at link stage
-build: directories libifsaux libutilities libifsrrtm libradiation \
+build: directories libifsaux libutilities libifsrrtm librrtmgp libradiation \
 	driver ifsdriver symlinks
 endif
 
-# git cannot store empty directories so they may need to be created 
+# git cannot store empty directories so they may need to be created
 directories: mod lib
 mod:
 	mkdir -p mod
@@ -146,13 +162,16 @@ libutilities: libifsaux
 libifsrrtm: libifsaux
 	cd ifsrrtm && $(MAKE)
 
-libradiation: libifsrrtm libutilities libifsaux
+librrtmgp:
+	cd rrtmgp-nn && $(MAKE)
+
+libradiation: libutilities libifsaux
 	cd radiation && $(MAKE)
 
-driver: libifsaux libifsrrtm libutilities libradiation
+driver: libifsaux libifsrrtm librrtmgp libutilities libradiation
 	cd driver && $(MAKE) driver
 
-ifsdriver: libifsaux libifsrrtm libutilities libradiation libifs
+ifsdriver: libifsaux libifsrrtm librrtmgp libutilities libradiation libifs
 	cd driver && $(MAKE) ifs_driver
 
 test_programs: driver
@@ -181,6 +200,7 @@ clean-tests:
 	cd test/ckdmip && $(MAKE) clean
 
 clean-toplevel:
+	cd rrtmgp-nn && $(MAKE) clean
 	cd radiation && $(MAKE) clean
 	cd driver && $(MAKE) clean
 
@@ -192,7 +212,7 @@ clean-utilities:
 	cd ifs && $(MAKE) clean
 
 clean-mods:
-	rm -f mod/*.mod
+	rm -f mod/*.mod mod/*__genmod.f90 ifsaux/*.mod ifsaux/*__genmod.f90
 
 clean-symlinks:
 	rm -f practical/ecrad practical/data
@@ -200,6 +220,6 @@ clean-symlinks:
 clean-autosaves:
 	rm -f *~ .gitignore~ */*~ */*/*~
 
-.PHONY: all build help deps clean-deps libifsaux libdummydrhook libutilities libifsrrtm \
+.PHONY: all build help deps clean-deps libifsaux libdummydrhook libutilities libifsrrtm librrtmgp \
 	libradiation driver symlinks clean clean-toplevel test test_ifs ifsdriver \
 	test_i3rc clean-tests clean-utilities clean-mods clean-symlinks

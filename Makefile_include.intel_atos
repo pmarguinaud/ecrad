@@ -17,7 +17,7 @@ endif
 
 FC = ifort
 CC = icc
-CPPFLAGS = 
+CPPFLAGS =
 
 ifndef DEBUG
 OPTFLAGS = -O2 -march=core-avx2 -no-fma
@@ -38,3 +38,6 @@ BASICFLAGS = -module ../mod -fpe0 -assume byterecl -align array64byte \
 	   -finline-functions -finline-limit=1500 -Winline -assume realloc_lhs
 DEBUGFLAGS = -g
 OMPFLAG = -qopenmp -qopenmp-threadprivate=compat
+
+# BLAS Library
+BLASLIB = mkl

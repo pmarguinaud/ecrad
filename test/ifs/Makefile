@@ -15,6 +15,7 @@ CHANGENAM = ../common/change_namelist.sh
 CONFIG = configCY49R1.nam
 CONFIG_ECCKD = configCY49R1_ecckd.nam
 CONFIG_MIXED = configCY49R1_mixed.nam
+CONFIG_RRTMGP = configRRTMGP.nam
 
 # Typing "make" will run radiation scheme on IFS profiles
 all: test
@@ -58,7 +59,7 @@ test_expexp:
 		overlap_scheme_name='"Exp-Exp"'
 	$(DRIVER) config_expexp.nam $(INPUT).nc $(INPUT)_expexp_out.nc
 
-# Tripleclouds solver with exponential-random overlap 
+# Tripleclouds solver with exponential-random overlap
 test_tripleclouds:
 	$(CHANGENAM) $(CONFIG) config_tc.nam \
 		sw_solver_name='"Tripleclouds"' lw_solver_name='"Tripleclouds"'
@@ -145,12 +146,12 @@ test_aerosol_averaging:
 	mv aerosol_optics.nc aerosol_optics_ecckd.nc
 	$(CHANGENAM) $(CONFIG) config_rrtmg_gen_saveaer.nam \
 		do_save_aerosol_optics=true use_general_aerosol_optics=true \
-		aerosol_optics_override_file_name="'aerosol_ifs_48R1.nc'" 
+		aerosol_optics_override_file_name="'aerosol_ifs_48R1.nc'"
 	$(DRIVER) config_rrtmg_gen_saveaer.nam $(INPUT).nc $(INPUT)_rrtmg_gen_saveaer_out.nc
 	mv aerosol_optics.nc aerosol_optics_rrtmg_gen.nc
 	$(CHANGENAM) $(CONFIG_ECCKD) config_ecckd_band_saveaer.nam \
 		do_save_aerosol_optics=true \
-		aerosol_optics_override_file_name="'aerosol_ifs_rrtm_46R1_with_NI_AM.nc'" 
+		aerosol_optics_override_file_name="'aerosol_ifs_rrtm_46R1_with_NI_AM.nc'"
 	$(DRIVER) config_ecckd_band_saveaer.nam $(INPUT).nc $(INPUT)_ecckd_band_saveaer_out.nc
 	mv aerosol_optics.nc aerosol_optics_ecckd_band.nc
 
@@ -158,14 +159,38 @@ test_aerosol_averaging:
 test_ecckd_spartacus:
 	$(CHANGENAM) $(CONFIG_ECCKD) config_ecckd_spartacus.nam \
 		sw_solver_name='"SPARTACUS"' lw_solver_name='"SPARTACUS"' \
-		do_3d_effects="true" 
+		do_3d_effects="true"
 	$(DRIVER) config_ecckd_spartacus.nam $(INPUT).nc $(INPUT)_ecckd_spartacus_out.nc
 
 # ecCKD gas optics with no aerosol
 test_ecckd_tc_noaer:
 	$(CHANGENAM) $(CONFIG_ECCKD) config_ecckd_tc_noaer.nam \
-		use_aerosols=false 
+		use_aerosols=false
 	$(DRIVER) config_ecckd_tc_noaer.nam $(INPUT).nc $(INPUT)_ecckd_tc_noaer_out.nc
+
+#  RRTMGP gas optics, McICA
+test_rrtmgp:
+	$(DRIVER) $(CONFIG_RRTMGP) $(INPUT).nc $(INPUT)_rrtmgp_default_out.nc
+
+#  RRTMGP gas optics with TripleClouds
+test_rrtmgp_tc:
+	$(CHANGENAM) $(CONFIG_RRTMGP) config_rrtmgp_tc.nam \
+		sw_solver_name='"Tripleclouds"' lw_solver_name='"Tripleclouds"' \
+		overlap_scheme_name='"Exp-Ran"'
+	$(DRIVER) config_rrtmgp_tc.nam $(INPUT).nc $(INPUT)_rrtmgp_tc_out.nc
+
+test_rrtmgp-nn_tc:
+	$(CHANGENAM) $(CONFIG_RRTMGP) config_rrtmgp-nn_tc.nam \
+		sw_solver_name='"Tripleclouds"' lw_solver_name='"Tripleclouds"' \
+		overlap_scheme_name='"Exp-Ran"' gas_model_name='"RRTMGP-NN"'
+	$(DRIVER) config_rrtmgp-nn_tc.nam $(INPUT).nc $(INPUT)_rrtmgp-nn_tc_out.nc
+
+# RRTMGP with SPARTACUS
+test_rrtmgp_spartacus:
+	$(CHANGENAM) $(CONFIG_RRTMGP) config_rrtmgp_spartacus.nam \
+		sw_solver_name='"SPARTACUS"' lw_solver_name='"SPARTACUS"' \
+		do_3d_effects="true" overlap_scheme_name='"Exp-Ran"'
+	$(DRIVER) config_rrtmgp_spartacus.nam $(INPUT).nc $(INPUT)_rrtmgp_spartacus_out.nc
 
 # Profiling
 TAG = default

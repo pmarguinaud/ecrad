@@ -33,6 +33,9 @@ version 1.6.1
 	  with respect to ice at colder temperatures. If used, the impact on
 	  fluxes is up to around 1 W m-2 in the SW and 0.05 in the LW, and
 	  for heating rates 0.002 K/d in the SW and 0.003 in the LW.
+	- Add new gas optics schemes: RRTMGP and RRTMGP-NN
+	  The implementation, development and testing is described in a GMD paper:
+	  https://doi.org/10.5194/egusphere-2022-1047
 
 version 1.6.0 (27 April 2023)
 	- Removed compiler flag specifying to load unformated Fortran
