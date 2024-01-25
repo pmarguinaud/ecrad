@@ -48,4 +48,6 @@ mo_gas_optics_rrtmgp.o: mo_rte_kind.o mo_rrtmgp_constants.o \
 mo_simple_netcdf.o: mo_rte_kind.o mo_simple_netcdf.F90
 
 mo_load_coefficients.o: mo_rte_kind.o mo_gas_concentrations.o mo_gas_optics_rrtmgp.o \
-  mo_simple_netcdf.o mo_load_coefficients.F90 
+  mo_simple_netcdf.o mo_load_coefficients.F90
+
+mo_rte_util_array.o mo_rte_rrtmgp_config.o: mo_rte_kind.o

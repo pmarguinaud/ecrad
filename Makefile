@@ -162,7 +162,7 @@ libutilities: libifsaux
 libifsrrtm: libifsaux
 	cd ifsrrtm && $(MAKE)
 
-librrtmgp:
+librrtmgp: libifsaux
 	cd rrtmgp-nn && $(MAKE)
 
 libradiation: libutilities libifsaux
