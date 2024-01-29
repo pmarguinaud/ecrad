@@ -81,7 +81,7 @@ module radiation_ecckd
     ! typically between -1.0 and 1.0 and provided by
     ! single_level%solar_spectral_multiplier.
     real(jprb), allocatable :: norm_amplitude_solar_irradiance(:)
-    
+
     ! Rayleigh molar scattering coefficient in m2 mol-1 in each g
     ! point
     real(jprb), allocatable :: rayleigh_molar_scat(:)
@@ -176,7 +176,7 @@ contains
     this%d_temperature = temperature_full(1,2)-temperature_full(1,1)
     this%ntemp = size(temperature_full,2)
     deallocate(temperature_full)
-    
+
     ! Read Planck function, or solar irradiance and Rayleigh
     ! scattering coefficient
     if (file%exists('solar_irradiance')) then
@@ -249,7 +249,7 @@ contains
     class(ckd_model_type), intent(in)  :: this
 
     integer :: jgas
-    
+
     if (this%is_sw) then
       write(nulout,'(a)',advance='no') 'ecCKD shortwave gas optics model: '
     else
@@ -304,7 +304,7 @@ contains
 
     ! Reference total solar irradiance (W m-2)
     real(jprb), parameter :: ReferenceTSI = 1361.0_jprb
-   
+
     class(ckd_model_type), intent(inout) :: this
     character(len=*),      intent(in)    :: filename
     integer, optional,     intent(in)    :: iverbose
@@ -325,24 +325,24 @@ contains
     real(jprb), allocatable :: ssi_grid(:)
     real(jprb), allocatable :: ssi_amplitude_grid(:)
     real(jprb), allocatable :: wavenumber_grid(:)
-    
+
     ! Old normalized solar irradiance in case it gets changed and we
     ! need to report the amplitude of the change
     real(jprb), allocatable :: old_norm_solar_irradiance(:)
-    
+
     real(jprb) :: dwav_grid
-    
+
     ! Number of input wavenumbers, and number on ecCKD model's grid
     integer :: nwav, nwav_grid
     ! Corresponding loop indices
     integer :: jwav, jwav_grid, jg
 
     integer :: iband
-    
+
     integer :: iverbose_local
 
     real(jphook) :: hook_handle
-    
+
     if (lhook) call dr_hook('radiation_ecckd:read_spectral_solar_cycle',0,hook_handle)
 
     if (present(iverbose)) then
@@ -360,14 +360,14 @@ contains
     call file%close()
 
     nwav = size(wavenumber)
-    
+
     nwav_grid = size(this%spectral_def%wavenumber1)
     allocate(ssi_grid(nwav_grid))
     allocate(ssi_amplitude_grid(nwav_grid))
     allocate(wavenumber_grid(nwav_grid))
     wavenumber_grid = 0.5_jprb * (this%spectral_def%wavenumber1+this%spectral_def%wavenumber2)
     dwav_grid = this%spectral_def%wavenumber2(1)-this%spectral_def%wavenumber1(1)
-    
+
     ssi_grid = 0.0_jprb
     ssi_amplitude_grid = 0.0_jprb
 
@@ -406,13 +406,13 @@ contains
         this%spectral_def%solar_spectral_irradiance = ssi_grid
       end if
     end if
-    
+
     ! Map on to g-points
     this%norm_amplitude_solar_irradiance &
          &  = this%norm_solar_irradiance &
          &  * matmul(ssi_amplitude_grid, this%spectral_def%gpoint_fraction) &
          &  / matmul(ssi_grid,this%spectral_def%gpoint_fraction)
-    
+
     ! Remove the mean from the solar-cycle fluctuations, since the
     ! user will scale with total solar irradiance
     this%norm_amplitude_solar_irradiance &
@@ -420,7 +420,7 @@ contains
          &  / sum(this%norm_solar_irradiance+this%norm_amplitude_solar_irradiance) &
          &  - this%norm_solar_irradiance
 
-    ! Print the spectral solar irradiance per g point, and solar cycle amplitude 
+    ! Print the spectral solar irradiance per g point, and solar cycle amplitude
     if (iverbose_local >= 2) then
       write(nulout,'(a,f6.1,a)') 'G-point, solar irradiance for nominal TSI = ', &
            &  ReferenceTSI, ' W m-2, solar cycle amplitude (at solar maximum), update to original solar irradiance'
@@ -445,11 +445,11 @@ contains
         end if
       end do
     end if
-    
+
     if (lhook) call dr_hook('radiation_ecckd:read_spectral_solar_cycle',1,hook_handle)
-    
+
   end subroutine read_spectral_solar_cycle
-  
+
 
   !---------------------------------------------------------------------
   ! Compute layerwise optical depth for each g point for ncol columns
@@ -460,6 +460,12 @@ contains
 
     use yomhook,             only : lhook, dr_hook, jphook
     use radiation_constants, only : AccelDueToGravity
+
+#if defined NG_SW && defined NG_LW && NG_SW==NG_LW
+    integer, parameter :: this_ng = NG_SW
+#else
+#define this_ng this%ng
+#endif
 
     ! Input variables
 
@@ -474,13 +480,13 @@ contains
     real(jprb),            intent(in)  :: mole_fraction_fl(ncol,nlev,nmaxgas)
     ! Optional concentration scaling of each gas
     real(jprb), optional,  intent(in)  :: concentration_scaling(nmaxgas)
-    
+
     ! Output variables
 
     ! Layer absorption optical depth for each g point
-    real(jprb),            intent(out) :: optical_depth_fl(this%ng,nlev,istartcol:iendcol)
+    real(jprb),            intent(out) :: optical_depth_fl(this_ng,nlev,istartcol:iendcol)
     ! In the shortwave only, the Rayleigh scattering optical depth
-    real(jprb),  optional, intent(out) :: rayleigh_od_fl(this%ng,nlev,istartcol:iendcol)
+    real(jprb),  optional, intent(out) :: rayleigh_od_fl(this_ng,nlev,istartcol:iendcol)
 
     ! Local variables
 
@@ -544,14 +550,14 @@ contains
       end do
 
       optical_depth_fl(:,:,jcol) = 0.0_jprb
-      
+
       do jgas = 1,this%ngas
 
         associate (single_gas => this%single_gas(jgas))
           igascode = this%single_gas(jgas)%i_gas_code
-          
+
           select case (single_gas%i_conc_dependence)
-            
+
           case (IConcDependenceLinear)
             molar_abs => this%single_gas(jgas)%molar_abs
             multiplier = simple_multiplier * mole_fraction_fl(jcol,:,igascode)
@@ -559,7 +565,7 @@ contains
             if (present(concentration_scaling)) then
               multiplier = multiplier * concentration_scaling(igascode)
             end if
-            
+
             do jlev = 1,nlev
               optical_depth_fl(:,jlev,jcol) = optical_depth_fl(:,jlev,jcol) &
                    &        + (multiplier(jlev)*tw1(jlev)) * (pw1(jlev) * molar_abs(:,ip1(jlev),it1(jlev)) &
@@ -579,7 +585,7 @@ contains
               multiplier = simple_multiplier  * (mole_fraction_fl(jcol,:,igascode) &
                    &                            - single_gas%reference_mole_frac)
             end if
-            
+
             do jlev = 1,nlev
               optical_depth_fl(:,jlev,jcol) = optical_depth_fl(:,jlev,jcol) &
                    &        + (multiplier(jlev)*tw1(jlev)) * (pw1(jlev) * molar_abs(:,ip1(jlev),it1(jlev)) &
@@ -606,7 +612,7 @@ contains
             else
               scaling = 1.0_jprb
             end if
-            
+
             ! Logarithmic interpolation in concentration space
             molar_abs_conc => this%single_gas(jgas)%molar_abs_conc
             mole_frac1 = exp(single_gas%log_mole_frac1)
@@ -640,7 +646,7 @@ contains
                    &     +(cw2(jlev) * tw2(jlev) * pw2(jlev)) * molar_abs_conc(:,ip1(jlev)+1,it1(jlev)+1,ic1(jlev)+1))
             end do
           end select
-            
+
         end associate
 
       end do
@@ -683,7 +689,7 @@ contains
     real(jprb),            intent(in)  :: temperature_fl(istartcol:iendcol,nlev)
     ! Gas mole fractions at full levels (mol mol-1), dimensioned (ncol,nlev,nmaxgas)
     real(jprb),            intent(in)  :: mole_fraction_fl(ncol,nlev,nmaxgas)
-    
+
     ! Output variables
 
     ! Layer absorption optical depth for each g point
@@ -761,9 +767,9 @@ contains
 
       associate (single_gas => this%single_gas(jgas))
         igascode = this%single_gas(jgas)%i_gas_code
-          
+
         select case (single_gas%i_conc_dependence)
-            
+
         case (IConcDependenceLinear)
           molar_abs => this%single_gas(jgas)%molar_abs
 
@@ -861,7 +867,7 @@ contains
             end do
           end do
         end select
-            
+
       end associate
 
       ! Ensure the optical depth is not negative
@@ -891,18 +897,23 @@ contains
 
   end subroutine calc_optical_depth_ckd_model_vec
 
-  
+
   !---------------------------------------------------------------------
   ! Calculate the Planck function integrated across each of the g
   ! points of this correlated k-distribution model, for a given
   ! temperature, where Planck function is defined as the flux emitted
   ! by a black body (rather than radiance)
   subroutine calc_planck_function(this, nt, temperature, planck)
+#if defined NG_SW && defined NG_LW && NG_SW==NG_LW
+    integer, parameter :: this_ng = NG_SW
+#else
+#define this_ng this%ng
+#endif
 
     class(ckd_model_type), intent(in)  :: this
     integer,    intent(in)  :: nt
     real(jprb), intent(in)  :: temperature(:) ! K
-    real(jprb), intent(out) :: planck(this%ng,nt) ! W m-2
+    real(jprb), intent(out) :: planck(this_ng,nt) ! W m-2
 
     real(jprb) :: tindex1, tw1, tw2
     integer    :: it1, jt
@@ -926,7 +937,7 @@ contains
     end do
 
   end subroutine calc_planck_function
-  
+
 
   !---------------------------------------------------------------------
   ! Return the spectral solar irradiance integrated over each g point
