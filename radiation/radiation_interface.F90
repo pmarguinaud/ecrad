@@ -464,7 +464,7 @@ contains
                &  planck_hl, lw_emission, lw_albedo, flux)
         else if (config%i_solver_lw == ISolverTripleclouds) then
           ! Compute fluxes using the Tripleclouds longwave solver
-          call solver_tripleclouds_lw(nlev,istartcol,iendcol, &
+          call solver_tripleclouds_lw(config%n_g_sw,nlev,istartcol,iendcol, &
                &  config, cloud, &
                &  od_lw, ssa_lw, g_lw, od_lw_cloud, ssa_lw_cloud, g_lw_cloud, &
                &  planck_hl, lw_emission, lw_albedo, flux)
