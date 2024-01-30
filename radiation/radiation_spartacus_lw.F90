@@ -325,14 +325,6 @@ contains
         write(nulout,'(a)',advance='no') '.'
       end if
 
-      ! Compute wavelength-independent overlap matrices u_matrix and v_matrix
-      call calc_overlap_matrices(nlev, nreg, &
-          &  region_fracs(:,:,jcol), cloud%overlap_param(jcol,:), &
-          &  v_matrix, u_matrix=u_matrix, decorrelation_scaling=config%cloud_inhom_decorr_scaling, &
-          &  cloud_fraction_threshold=config%cloud_fraction_threshold, &
-          &  use_beta_overlap=config%use_beta_overlap, &
-          &  cloud_cover=flux%cloud_cover_lw(jcol))
-
       ! Define which layers contain cloud; assume that
       ! cloud%crop_cloud_fraction has already been called
       is_clear_sky_layer = .true.
@@ -341,6 +333,14 @@ contains
           is_clear_sky_layer(jlev) = .false.
         end if
       end do
+
+      ! Compute wavelength-independent overlap matrices u_matrix and v_matrix
+      call calc_overlap_matrices(nlev, nreg, is_clear_sky_layer, &
+          &  region_fracs(:,:,jcol), cloud%overlap_param(jcol,:), &
+          &  v_matrix, u_matrix=u_matrix, decorrelation_scaling=config%cloud_inhom_decorr_scaling, &
+          &  cloud_fraction_threshold=config%cloud_fraction_threshold, &
+          &  use_beta_overlap=config%use_beta_overlap, &
+          &  cloud_cover=flux%cloud_cover_lw(jcol))
 
       ! --------------------------------------------------------
       ! Section 3: First loop over layers

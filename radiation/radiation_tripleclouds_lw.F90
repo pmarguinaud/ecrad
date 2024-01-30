@@ -214,14 +214,6 @@ contains
         ! Main loop over columns
     do jcol = istartcol, iendcol
 
-      ! Compute wavelength-independent overlap matrices u_matrix and v_matrix
-      call calc_overlap_matrices(nlev, nregions, &
-        &  region_fracs(:,:,jcol), cloud%overlap_param(jcol,:), &
-        &  v_matrix, u_matrix=u_matrix, decorrelation_scaling=config%cloud_inhom_decorr_scaling, &
-        &  cloud_fraction_threshold=config%cloud_fraction_threshold, &
-        &  use_beta_overlap=config%use_beta_overlap, &
-        &  cloud_cover=flux%cloud_cover_lw(jcol))
-
       ! --------------------------------------------------------
       ! Section 2: Prepare column-specific variables and arrays
       ! --------------------------------------------------------
@@ -244,6 +236,14 @@ contains
         ! consider scattering
         i_cloud_top = 1
       end if
+
+      ! Compute wavelength-independent overlap matrices u_matrix and v_matrix
+      call calc_overlap_matrices(nlev, nregions, is_clear_sky_layer, &
+        &  region_fracs(:,:,jcol), cloud%overlap_param(jcol,:), &
+        &  v_matrix, u_matrix=u_matrix, decorrelation_scaling=config%cloud_inhom_decorr_scaling, &
+        &  cloud_fraction_threshold=config%cloud_fraction_threshold, &
+        &  use_beta_overlap=config%use_beta_overlap, &
+        &  cloud_cover=flux%cloud_cover_lw(jcol))
 
       ! --------------------------------------------------------
       ! Section 3: Clear-sky calculation

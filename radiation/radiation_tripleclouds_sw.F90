@@ -204,8 +204,18 @@ contains
 
         ! Main loop over columns
     do jcol = istartcol, iendcol
+
+      ! Define which layers contain cloud; assume that
+      ! cloud%crop_cloud_fraction has already been called
+      is_clear_sky_layer = .true.
+      do jlev = 1,nlev
+        if (cloud%fraction(jcol,jlev) > 0.0_jprb) then
+          is_clear_sky_layer(jlev) = .false.
+        end if
+      end do
+
       ! Compute wavelength-independent overlap matrix v_matrix
-      call calc_overlap_matrices(nlev, nregions, &
+      call calc_overlap_matrices(nlev, nregions, is_clear_sky_layer, &
         &  region_fracs(:,:,jcol), cloud%overlap_param(jcol,:), &
         &  v_matrix, decorrelation_scaling=config%cloud_inhom_decorr_scaling, &
         &  cloud_fraction_threshold=config%cloud_fraction_threshold, &
@@ -259,15 +269,6 @@ contains
       end if ! sun is below the horizon
 
       ! At this point mu0 >= 1.0e-10
-
-      ! Define which layers contain cloud; assume that
-      ! cloud%crop_cloud_fraction has already been called
-      is_clear_sky_layer = .true.
-      do jlev = 1,nlev
-        if (cloud%fraction(jcol,jlev) > 0.0_jprb) then
-          is_clear_sky_layer(jlev) = .false.
-        end if
-      end do
 
       ! --------------------------------------------------------
       ! Section 3: Loop over layers to compute reflectance and transmittance

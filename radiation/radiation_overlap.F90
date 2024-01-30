@@ -424,7 +424,7 @@ contains
   ! levels there are nlev+1 interfaces including the ground and
   ! top-of-atmosphere, and so that is one of the dimensions of
   ! u_matrix and v_matrix.
-  subroutine calc_overlap_matrices(nlev, nreg_in, &
+  subroutine calc_overlap_matrices(nlev, nreg_in, is_clear_sky_layer, &
        &     region_fracs, overlap_param, v_matrix, u_matrix, decorrelation_scaling, &
        &     cloud_fraction_threshold, cloud_cover, use_beta_overlap)
 
@@ -433,6 +433,9 @@ contains
 
     ! Number of levels and regions
     integer,  intent(in) :: nlev, nreg_in
+
+    ! Boolean describing if layers are clear-sky: in this case we can skip computations
+    logical, intent(in) :: is_clear_sky_layer(0:nlev+1)
 
     ! Area fraction of each region: region 1 is clear sky, and 2+ are
     ! the cloudy regions (only one or two cloudy regions are
@@ -535,58 +538,72 @@ contains
         frac_lower = region_fracs(1:nreg,jlev)
       end if
 
-      ! Compute the overlap parameter of the interface just below
-      ! the current full level
-      if (jlev == 1 .or. jlev > nlev) then
-        ! We are at the surface or top-of-atmosphere: overlap
-        ! parameter is irrelevant
-        op = 1.0_jprb
-      else
-        ! We are not at the surface
-        op(1) = overlap_param(jlev-1)
-        ! For cloudy regions, scale the cloud-boundary overlap
-        ! parameter to obtain the cloud-inhomogeneity overlap
-        ! parameter as follows
-        if (op(1) >= 0.0_jprb) then
-          op(2:nreg) = op(1)**(1.0_jprb/used_decorrelation_scaling)
-        else
-          op(2:nreg) = op(1)
+      if (is_clear_sky_layer(jlev) .and. is_clear_sky_layer(jlev-1)) then
+        v_matrix(:,:,jlev) = 0.0_jprb
+        v_matrix(1,1,jlev) = 1.0_jprb
+
+        if (present(u_matrix)) then
+          u_matrix(:,:,jlev) = 0.0_jprb
+          u_matrix(1,1,jlev) = 1.0_jprb
         end if
-      end if
 
-      if (use_beta_overlap_param) then
-        overlap_matrix = calc_beta_overlap_matrix(nreg, op, &
-              &  frac_upper, frac_lower, frac_threshold)
       else
-        ! Simpler scheme assuming the two cloudy regions have the
-        ! same fraction
-        !overlap_matrix = calc_alpha_overlap_matrix_simple(nreg, &
-        !     &  op(1), op(2), &
-        !     &  1.0_jprb - frac_upper(1), 1.0_jprb - frac_lower(1))
-        ! More general scheme
-        overlap_matrix = calc_alpha_overlap_matrix(nreg, &
-              &  op(1), op(2), frac_upper, frac_lower)
+
+        ! Compute the overlap parameter of the interface just below
+        ! the current full level
+        if (jlev == 1 .or. jlev > nlev) then
+          ! We are at the surface or top-of-atmosphere: overlap
+          ! parameter is irrelevant
+          op = 1.0_jprb
+        else
+          ! We are not at the surface
+          op(1) = overlap_param(jlev-1)
+          ! For cloudy regions, scale the cloud-boundary overlap
+          ! parameter to obtain the cloud-inhomogeneity overlap
+          ! parameter as follows
+          if (op(1) >= 0.0_jprb) then
+            op(2:nreg) = op(1)**(1.0_jprb/used_decorrelation_scaling)
+          else
+            op(2:nreg) = op(1)
+          end if
+        end if
+
+        if (use_beta_overlap_param) then
+          overlap_matrix = calc_beta_overlap_matrix(nreg, op, &
+                &  frac_upper, frac_lower, frac_threshold)
+        else
+          ! Simpler scheme assuming the two cloudy regions have the
+          ! same fraction
+          !overlap_matrix = calc_alpha_overlap_matrix_simple(nreg, &
+          !     &  op(1), op(2), &
+          !     &  1.0_jprb - frac_upper(1), 1.0_jprb - frac_lower(1))
+          ! More general scheme
+          overlap_matrix = calc_alpha_overlap_matrix(nreg, &
+                &  op(1), op(2), frac_upper, frac_lower)
+        end if
+
+        ! Convert to directional overlap matrices
+        do jupper = 1,nreg
+          do jlower = 1,nreg
+            if(present(u_matrix)) then
+              if (frac_lower(jlower) >= frac_threshold) then
+                u_matrix(jupper,jlower,jlev) = overlap_matrix(jupper,jlower) &
+                    &  / frac_lower(jlower)
+              else
+                u_matrix(jupper,jlower,jlev) = 0.0_jprb
+              end if
+            end if
+            if (frac_upper(jupper) >= frac_threshold) then
+              v_matrix(jlower,jupper,jlev) = overlap_matrix(jupper,jlower) &
+                    &  / frac_upper(jupper)
+            else
+              v_matrix(jlower,jupper,jlev) = 0.0_jprb
+            end if
+          end do
+        end do
+
       end if
 
-      ! Convert to directional overlap matrices
-      do jupper = 1,nreg
-        do jlower = 1,nreg
-          if(present(u_matrix)) then
-            if (frac_lower(jlower) >= frac_threshold) then
-              u_matrix(jupper,jlower,jlev) = overlap_matrix(jupper,jlower) &
-                  &  / frac_lower(jlower)
-            else
-              u_matrix(jupper,jlower,jlev) = 0.0_jprb
-            end if
-          end if
-          if (frac_upper(jupper) >= frac_threshold) then
-            v_matrix(jlower,jupper,jlev) = overlap_matrix(jupper,jlower) &
-                  &  / frac_upper(jupper)
-          else
-            v_matrix(jlower,jupper,jlev) = 0.0_jprb
-          end if
-        end do
-      end do
       frac_upper = frac_lower
 
     end do ! levels
@@ -601,7 +618,7 @@ contains
   end subroutine calc_overlap_matrices
 
   ! Double-precision version for SPARTACUS_SW
-  subroutine calc_overlap_matrices_dp(nlev, nreg_in, &
+  subroutine calc_overlap_matrices_dp(nlev, nreg_in, is_clear_sky_layer, &
        &     region_fracs, overlap_param, v_matrix, u_matrix, decorrelation_scaling, &
        &     cloud_fraction_threshold, cloud_cover, use_beta_overlap)
 
@@ -610,6 +627,9 @@ contains
 
     ! Number of levels and regions
     integer,  intent(in) :: nlev, nreg_in
+
+    ! Boolean describing if layers are clear-sky: in this case we can skip computations
+    logical, intent(in) :: is_clear_sky_layer(0:nlev+1)
 
     ! Area fraction of each region: region 1 is clear sky, and 2+ are
     ! the cloudy regions (only one or two cloudy regions are
@@ -712,58 +732,72 @@ contains
         frac_lower = region_fracs(1:nreg,jlev)
       end if
 
-      ! Compute the overlap parameter of the interface just below
-      ! the current full level
-      if (jlev == 1 .or. jlev > nlev) then
-        ! We are at the surface or top-of-atmosphere: overlap
-        ! parameter is irrelevant
-        op = 1.0_jprd
-      else
-        ! We are not at the surface
-        op(1) = overlap_param(jlev-1)
-        ! For cloudy regions, scale the cloud-boundary overlap
-        ! parameter to obtain the cloud-inhomogeneity overlap
-        ! parameter as follows
-        if (op(1) >= 0.0_jprd) then
-          op(2:nreg) = op(1)**(1.0_jprd/used_decorrelation_scaling)
-        else
-          op(2:nreg) = op(1)
+      if (is_clear_sky_layer(jlev) .and. is_clear_sky_layer(jlev-1)) then
+        v_matrix(:,:,jlev) = 0.0_jprb
+        v_matrix(1,1,jlev) = 1.0_jprb
+
+        if (present(u_matrix)) then
+          u_matrix(:,:,jlev) = 0.0_jprb
+          u_matrix(1,1,jlev) = 1.0_jprb
         end if
-      end if
 
-      if (use_beta_overlap_param) then
-        overlap_matrix = calc_beta_overlap_matrix_dp(nreg, op, &
-              &  frac_upper, frac_lower, frac_threshold)
       else
-        ! Simpler scheme assuming the two cloudy regions have the
-        ! same fraction
-        !overlap_matrix = calc_alpha_overlap_matrix_simple(nreg, &
-        !     &  op(1), op(2), &
-        !     &  1.0_jprd - frac_upper(1), 1.0_jprd - frac_lower(1))
-        ! More general scheme
-        overlap_matrix = calc_alpha_overlap_matrix_dp(nreg, &
-              &  op(1), op(2), frac_upper, frac_lower)
+
+        ! Compute the overlap parameter of the interface just below
+        ! the current full level
+        if (jlev == 1 .or. jlev > nlev) then
+          ! We are at the surface or top-of-atmosphere: overlap
+          ! parameter is irrelevant
+          op = 1.0_jprd
+        else
+          ! We are not at the surface
+          op(1) = overlap_param(jlev-1)
+          ! For cloudy regions, scale the cloud-boundary overlap
+          ! parameter to obtain the cloud-inhomogeneity overlap
+          ! parameter as follows
+          if (op(1) >= 0.0_jprd) then
+            op(2:nreg) = op(1)**(1.0_jprd/used_decorrelation_scaling)
+          else
+            op(2:nreg) = op(1)
+          end if
+        end if
+
+        if (use_beta_overlap_param) then
+          overlap_matrix = calc_beta_overlap_matrix_dp(nreg, op, &
+                &  frac_upper, frac_lower, frac_threshold)
+        else
+          ! Simpler scheme assuming the two cloudy regions have the
+          ! same fraction
+          !overlap_matrix = calc_alpha_overlap_matrix_simple(nreg, &
+          !     &  op(1), op(2), &
+          !     &  1.0_jprd - frac_upper(1), 1.0_jprd - frac_lower(1))
+          ! More general scheme
+          overlap_matrix = calc_alpha_overlap_matrix_dp(nreg, &
+                &  op(1), op(2), frac_upper, frac_lower)
+        end if
+
+        ! Convert to directional overlap matrices
+        do jupper = 1,nreg
+          do jlower = 1,nreg
+            if(present(u_matrix)) then
+              if (frac_lower(jlower) >= frac_threshold) then
+                u_matrix(jupper,jlower,jlev) = overlap_matrix(jupper,jlower) &
+                    &  / frac_lower(jlower)
+              else
+                u_matrix(jupper,jlower,jlev) = 0.0_jprd
+              end if
+            end if
+            if (frac_upper(jupper) >= frac_threshold) then
+              v_matrix(jlower,jupper,jlev) = overlap_matrix(jupper,jlower) &
+                    &  / frac_upper(jupper)
+            else
+              v_matrix(jlower,jupper,jlev) = 0.0_jprd
+            end if
+          end do
+        end do
+
       end if
 
-      ! Convert to directional overlap matrices
-      do jupper = 1,nreg
-        do jlower = 1,nreg
-          if(present(u_matrix)) then
-            if (frac_lower(jlower) >= frac_threshold) then
-              u_matrix(jupper,jlower,jlev) = overlap_matrix(jupper,jlower) &
-                  &  / frac_lower(jlower)
-            else
-              u_matrix(jupper,jlower,jlev) = 0.0_jprd
-            end if
-          end if
-          if (frac_upper(jupper) >= frac_threshold) then
-            v_matrix(jlower,jupper,jlev) = overlap_matrix(jupper,jlower) &
-                  &  / frac_upper(jupper)
-          else
-            v_matrix(jlower,jupper,jlev) = 0.0_jprd
-          end if
-        end do
-      end do
       frac_upper = frac_lower
 
     end do ! levels
