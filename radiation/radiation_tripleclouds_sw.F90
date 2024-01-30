@@ -117,8 +117,7 @@ contains
 
     ! Directional overlap matrices defined at all layer interfaces
     ! including top-of-atmosphere and the surface
-    real(jprb), dimension(nregions,nregions,nlev+1, &
-         &                istartcol:iendcol) :: u_matrix, v_matrix
+    real(jprb), dimension(nregions,nregions,nlev+1) :: u_matrix, v_matrix
 
     ! Diffuse reflection and transmission matrices in the cloudy
     ! regions of each layer
@@ -203,18 +202,15 @@ contains
          &  cloud%fraction, cloud%fractional_std, region_fracs, &
          &  od_scaling, config%cloud_fraction_threshold)
 
-    ! Compute wavelength-independent overlap matrices u_matrix and
-    ! v_matrix
-    call calc_overlap_matrices(nlev,nregions,istartcol,iendcol, &
-         &  region_fracs, cloud%overlap_param, &
-         &  u_matrix, v_matrix, &
-         &  decorrelation_scaling=config%cloud_inhom_decorr_scaling, &
-         &  cloud_fraction_threshold=config%cloud_fraction_threshold, &
-         &  use_beta_overlap=config%use_beta_overlap, &
-         &  cloud_cover=flux%cloud_cover_sw)
-
-    ! Main loop over columns
+        ! Main loop over columns
     do jcol = istartcol, iendcol
+      ! Compute wavelength-independent overlap matrix v_matrix
+      call calc_overlap_matrices(nlev, nregions, &
+        &  region_fracs(:,:,jcol), cloud%overlap_param(jcol,:), &
+        &  v_matrix, decorrelation_scaling=config%cloud_inhom_decorr_scaling, &
+        &  cloud_fraction_threshold=config%cloud_fraction_threshold, &
+        &  use_beta_overlap=config%use_beta_overlap, &
+        &  cloud_cover=flux%cloud_cover_sw(jcol))
       ! --------------------------------------------------------
       ! Section 2: Prepare column-specific variables and arrays
       ! --------------------------------------------------------
@@ -497,11 +493,11 @@ contains
               total_albedo(:,jreg,jlev) &
                    &  = total_albedo(:,jreg,jlev) &
                    &  + total_albedo_below(:,jreg2) &
-                   &  * v_matrix(jreg2,jreg,jlev,jcol)
+                   &  * v_matrix(jreg2,jreg,jlev)
               total_albedo_direct(:,jreg,jlev) &
                    &  = total_albedo_direct(:,jreg,jlev) &
                    &  + total_albedo_below_direct(:,jreg2) &
-                   &  * v_matrix(jreg2,jreg,jlev,jcol)
+                   &  * v_matrix(jreg2,jreg,jlev)
             end do
           end do
 
@@ -663,9 +659,9 @@ contains
           ! Account for overlap rules in translating fluxes just above
           ! a layer interface to the values just below
           flux_dn = singlemat_x_vec(ng,ng,nregions, &
-               &  v_matrix(:,:,jlev+1,jcol), flux_dn)
+               &  v_matrix(:,:,jlev+1), flux_dn)
           direct_dn = singlemat_x_vec(ng,ng,nregions, &
-               &  v_matrix(:,:,jlev+1,jcol), direct_dn)
+               &  v_matrix(:,:,jlev+1), direct_dn)
         end if ! Otherwise the fluxes in each region are the same so
                ! nothing to do
 

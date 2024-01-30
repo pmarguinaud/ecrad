@@ -130,8 +130,7 @@ contains
 
     ! Directional overlap matrices defined at all layer interfaces
     ! including top-of-atmosphere and the surface
-    real(jprb), dimension(nregions,nregions,nlev+1, &
-         &                istartcol:iendcol) :: u_matrix, v_matrix
+    real(jprb), dimension(nregions,nregions,nlev+1) :: u_matrix, v_matrix
 
     ! Diffuse reflection and transmission matrices of each layer
     ! real(jprb), dimension(ng, nregions, nlev) :: reflectance, transmittance
@@ -212,17 +211,17 @@ contains
          &  cloud%fraction, cloud%fractional_std, region_fracs, &
          &  od_scaling, config%cloud_fraction_threshold)
 
-    ! Compute wavelength-independent overlap matrices u_matrix and v_matrix
-    call calc_overlap_matrices(nlev,nregions,istartcol,iendcol, &
-         &  region_fracs, cloud%overlap_param, &
-         &  u_matrix, v_matrix, &
-         &  decorrelation_scaling=config%cloud_inhom_decorr_scaling, &
-         &  cloud_fraction_threshold=config%cloud_fraction_threshold, &
-         &  use_beta_overlap=config%use_beta_overlap, &
-         &  cloud_cover=flux%cloud_cover_lw)
-
-    ! Main loop over columns
+        ! Main loop over columns
     do jcol = istartcol, iendcol
+
+      ! Compute wavelength-independent overlap matrices u_matrix and v_matrix
+      call calc_overlap_matrices(nlev, nregions, &
+        &  region_fracs(:,:,jcol), cloud%overlap_param(jcol,:), &
+        &  v_matrix, u_matrix=u_matrix, decorrelation_scaling=config%cloud_inhom_decorr_scaling, &
+        &  cloud_fraction_threshold=config%cloud_fraction_threshold, &
+        &  use_beta_overlap=config%use_beta_overlap, &
+        &  cloud_cover=flux%cloud_cover_lw(jcol))
+
       ! --------------------------------------------------------
       ! Section 2: Prepare column-specific variables and arrays
       ! --------------------------------------------------------
@@ -487,7 +486,7 @@ contains
           total_source(:,:,jlev) = total_source_below(:,:)
         else
           total_source(:,:,jlev) = singlemat_x_vec(ng,ng,nregions,&
-               &  u_matrix(:,:,jlev,jcol), total_source_below)
+               &  u_matrix(:,:,jlev), total_source_below)
           ! Use overlap matrix and exclude "anomalous" horizontal
           ! transport described by Shonk & Hogan (2008).  Therefore,
           ! the operation we perform is essentially diag(total_albedo)
@@ -497,7 +496,7 @@ contains
               total_albedo(:,jreg,jlev) &
                    &  = total_albedo(:,jreg,jlev) &
                    &  + total_albedo_below(:,jreg2) &
-                   &  * v_matrix(jreg2,jreg,jlev,jcol)
+                   &  * v_matrix(jreg2,jreg,jlev)
 
             end do
           end do
@@ -580,7 +579,7 @@ contains
       ! scattering layer, using overlap matrix to translate to the
       ! regions of the first layer of cloud
       do jreg = 1,nregions
-        flux_dn(:,jreg)  = v_matrix(jreg,1,i_cloud_top,jcol)*flux_dn_clear(:,i_cloud_top)
+        flux_dn(:,jreg)  = v_matrix(jreg,1,i_cloud_top)*flux_dn_clear(:,i_cloud_top)
       end do
 
       ! Final loop back down through the atmosphere to compute fluxes
@@ -616,7 +615,7 @@ contains
           end if
           ! Account for overlap rules in translating fluxes just above
           ! a layer interface to the values just below
-          flux_dn = singlemat_x_vec(ng, ng, nregions, v_matrix(:,:,jlev+1,jcol), flux_dn)
+          flux_dn = singlemat_x_vec(ng, ng, nregions, v_matrix(:,:,jlev+1), flux_dn)
         end if ! Otherwise the fluxes in each region are the same so nothing to do
 
         ! Store the broadband fluxes
@@ -662,7 +661,7 @@ contains
         ! regions first to provide a simple spectral flux upwelling
         ! from the surface
         call calc_lw_derivatives_region(ng, nlev, nregions, jcol, transmittance, &
-             &  u_matrix(:,:,:,jcol), sum(flux_up,2), flux%lw_derivatives)
+             &  u_matrix(:,:,:), sum(flux_up,2), flux%lw_derivatives)
       end if
       deallocate(total_albedo, total_source)
 

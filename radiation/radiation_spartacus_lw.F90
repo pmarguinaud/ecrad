@@ -167,8 +167,7 @@ contains
 
     ! Directional overlap matrices defined at all layer interfaces
     ! including top-of-atmosphere and the surface
-    real(jprb), dimension(nreg,nreg,nlev+1,istartcol:iendcol) &
-         &  :: u_matrix, v_matrix
+    real(jprb), dimension(nreg,nreg,nlev+1) :: u_matrix, v_matrix
 
     ! Two-stream variables
     real(jprb), dimension(ng, nreg) &
@@ -309,14 +308,6 @@ contains
          &  cloud%fraction, cloud%fractional_std, region_fracs, &
          &  od_scaling, config%cloud_fraction_threshold)
 
-    ! Compute wavelength-independent overlap matrices u_matrix and v_matrix
-    call calc_overlap_matrices(nlev, nreg, istartcol, iendcol, &
-         &  region_fracs, cloud%overlap_param, &
-         &  u_matrix, v_matrix, decorrelation_scaling=config%cloud_inhom_decorr_scaling, &
-         &  cloud_fraction_threshold=config%cloud_fraction_threshold, &
-         &  use_beta_overlap=config%use_beta_overlap, &
-         &  cloud_cover=flux%cloud_cover_lw)
-
     if (config%iverbose >= 3) then
       write(nulout,'(a)',advance='no') '  Processing columns'
     end if
@@ -330,6 +321,14 @@ contains
       if (config%iverbose >= 3) then
         write(nulout,'(a)',advance='no') '.'
       end if
+
+      ! Compute wavelength-independent overlap matrices u_matrix and v_matrix
+      call calc_overlap_matrices(nlev, nreg, &
+          &  region_fracs(:,:,jcol), cloud%overlap_param(jcol,:), &
+          &  v_matrix, u_matrix=u_matrix, decorrelation_scaling=config%cloud_inhom_decorr_scaling, &
+          &  cloud_fraction_threshold=config%cloud_fraction_threshold, &
+          &  use_beta_overlap=config%use_beta_overlap, &
+          &  cloud_cover=flux%cloud_cover_lw(jcol))
 
       ! Define which layers contain cloud; assume that
       ! cloud%crop_cloud_fraction has already been called
@@ -909,15 +908,15 @@ contains
           total_source(:,1,jlev) = total_source_below(:,1)
         else
           total_source(:,:,jlev) = singlemat_x_vec(ng,ng,nreg,&
-               &  u_matrix(:,:,jlev,jcol), total_source_below)
+               &  u_matrix(:,:,jlev), total_source_below)
 
 !          if (config%do_3d_effects .or. config%do_3d_lw_multilayer_effects) then
           if (config%do_3d_lw_multilayer_effects) then
             ! Use the overlap matrices u_matrix and v_matrix
             total_albedo(:,:,:,jlev) = singlemat_x_mat(ng,ng,nreg,&
-                 &  u_matrix(:,:,jlev,jcol), &
+                 &  u_matrix(:,:,jlev), &
                  &  mat_x_singlemat(ng,ng,nreg,total_albedo_below,&
-                 &  v_matrix(:,:,jlev,jcol)))
+                 &  v_matrix(:,:,jlev)))
           else
             total_albedo(:,:,:,jlev) = 0.0_jprb
             ! "total_albedo" is diagonal and we wish to exclude
@@ -930,7 +929,7 @@ contains
                 total_albedo(:,jreg,jreg,jlev) &
                      &  = total_albedo(:,jreg,jreg,jlev) &
                      &  + total_albedo_below(:,jreg2,jreg2) &
-                     &  * v_matrix(jreg2,jreg,jlev,jcol)
+                     &  * v_matrix(jreg2,jreg,jlev)
               end do
             end do
           end if
@@ -1024,7 +1023,7 @@ contains
         if (is_clear_sky_layer(jlev) .and. is_clear_sky_layer(jlev+1)) then
           flux_dn_below = flux_dn_above
         else
-          flux_dn_below = singlemat_x_vec(ng,ng,nreg,v_matrix(:,:,jlev+1,jcol), &
+          flux_dn_below = singlemat_x_vec(ng,ng,nreg,v_matrix(:,:,jlev+1), &
                &    flux_dn_above)
         end if
 
@@ -1070,7 +1069,7 @@ contains
         ! regions first to provide a simple spectral flux upwelling
         ! from the surface
         call calc_lw_derivatives_matrix(ng, nlev, nreg, jcol, transmittance, &
-             &  u_matrix(:,:,:,jcol), sum(flux_up_above,2), flux%lw_derivatives)
+             &  u_matrix(:,:,:), sum(flux_up_above,2), flux%lw_derivatives)
       end if
 
     end do ! Loop over columns

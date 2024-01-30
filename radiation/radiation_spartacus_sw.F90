@@ -179,8 +179,7 @@ contains
 
     ! Directional overlap matrices defined at all layer interfaces
     ! including top-of-atmosphere and the surface
-    real(jprb), dimension(nreg,nreg,nlev+1, &
-         &                istartcol:iendcol) :: u_matrix, v_matrix
+    real(jprb), dimension(nreg,nreg,nlev+1) :: u_matrix, v_matrix
 
     ! Two-stream variables
     real(jprb), dimension(ng, nreg) &
@@ -324,20 +323,20 @@ contains
          &  cloud%fraction, cloud%fractional_std, region_fracs, &
          &  od_scaling, config%cloud_fraction_threshold)
 
-    ! Compute wavelength-independent overlap matrices u_matrix and v_matrix
-    call calc_overlap_matrices(nlev,nreg,istartcol,iendcol, &
-         &  region_fracs, cloud%overlap_param, &
-         &  u_matrix, v_matrix, decorrelation_scaling=config%cloud_inhom_decorr_scaling, &
-         &  cloud_fraction_threshold=config%cloud_fraction_threshold, &
-         &  use_beta_overlap=config%use_beta_overlap, &
-         &  cloud_cover=flux%cloud_cover_sw)
-
     if (config%iverbose >= 3) then
       write(nulout,'(a)',advance='no') '  Processing columns'
     end if
 
     ! Main loop over columns
     do jcol = istartcol, iendcol
+      ! Compute wavelength-independent overlap matrices u_matrix and v_matrix
+      call calc_overlap_matrices(nlev, nreg, &
+          &  region_fracs(:,:,jcol), cloud%overlap_param(jcol,:), &
+          &  u_matrix=u_matrix, v_matrix=v_matrix, decorrelation_scaling=config%cloud_inhom_decorr_scaling, &
+          &  cloud_fraction_threshold=config%cloud_fraction_threshold, &
+          &  use_beta_overlap=config%use_beta_overlap, &
+          &  cloud_cover=flux%cloud_cover_sw(jcol))
+
       ! --------------------------------------------------------
       ! Section 2: Prepare column-specific variables and arrays
       ! --------------------------------------------------------
@@ -988,13 +987,13 @@ contains
           ! "Maximum entrapment": use the overlap matrices u_matrix and v_matrix
           ! (this is the original SPARTACUS method)
           total_albedo(:,:,:,jlev) = singlemat_x_mat(ng,ng,nreg,&
-               &  u_matrix(:,:,jlev,jcol), &
+               &  u_matrix(:,:,jlev), &
                &  mat_x_singlemat(ng,ng,nreg,total_albedo_below,&
-               &  v_matrix(:,:,jlev,jcol)))
+               &  v_matrix(:,:,jlev)))
           total_albedo_direct(:,:,:,jlev) = singlemat_x_mat(ng,ng,nreg,&
-               &  u_matrix(:,:,jlev,jcol), &
+               &  u_matrix(:,:,jlev), &
                &  mat_x_singlemat(ng,ng,nreg,total_albedo_below_direct,&
-               &  v_matrix(:,:,jlev,jcol)))
+               &  v_matrix(:,:,jlev)))
 
         else if (config%i_3d_sw_entrapment == IEntrapmentZero) then
           ! "Zero entrapment": even radiation transported
@@ -1006,7 +1005,7 @@ contains
             do jreg2 = 1,nreg ! Current layer (jlev)
               total_albedo(:,jreg,jreg,jlev) = total_albedo(:,jreg,jreg,jlev) &
                    &  + sum(total_albedo_below(:,:,jreg2),2) &
-                   &  * v_matrix(jreg2,jreg,jlev,jcol)
+                   &  * v_matrix(jreg2,jreg,jlev)
             end do
           end do
           ! ...then direct radiation:
@@ -1015,7 +1014,7 @@ contains
             do jreg2 = 1,nreg ! Current layer (jlev)
               total_albedo_direct(:,jreg,jreg,jlev) = total_albedo_direct(:,jreg,jreg,jlev) &
                    &  + sum(total_albedo_below_direct(:,:,jreg2),2) &
-                   &  * v_matrix(jreg2,jreg,jlev,jcol)
+                   &  * v_matrix(jreg2,jreg,jlev)
             end do
           end do
 
@@ -1042,18 +1041,18 @@ contains
             albedo_part(:,jreg,jreg) = 0.0_jprb
           end do
           total_albedo(:,:,:,jlev) = singlemat_x_mat(ng,ng,nreg,&
-               &  u_matrix(:,:,jlev,jcol), &
+               &  u_matrix(:,:,jlev), &
                &  mat_x_singlemat(ng,ng,nreg,albedo_part,&
-               &  v_matrix(:,:,jlev,jcol)))
+               &  v_matrix(:,:,jlev)))
           ! ...then direct radiation:
           albedo_part = total_albedo_below_direct
           do jreg = 1,nreg
             albedo_part(:,jreg,jreg) = 0.0_jprb
           end do
           total_albedo_direct(:,:,:,jlev) = singlemat_x_mat(ng,ng,nreg,&
-               &  u_matrix(:,:,jlev,jcol), &
+               &  u_matrix(:,:,jlev), &
                &  mat_x_singlemat(ng,ng,nreg,albedo_part,&
-               &  v_matrix(:,:,jlev,jcol)))
+               &  v_matrix(:,:,jlev)))
 
 #ifdef EXPLICIT_EDGE_ENTRAPMENT
 end if
@@ -1071,11 +1070,11 @@ end if
                 total_albedo(:,jreg,jreg,jlev) &
                      &  = total_albedo(:,jreg,jreg,jlev) &
                      &  + total_albedo_below(:,jreg2,jreg2) &
-                     &  * v_matrix(jreg2,jreg,jlev,jcol)
+                     &  * v_matrix(jreg2,jreg,jlev)
                 total_albedo_direct(:,jreg,jreg,jlev) &
                      &  = total_albedo_direct(:,jreg,jreg,jlev) &
                      &  + total_albedo_below_direct(:,jreg2,jreg2) &
-                     &  * v_matrix(jreg2,jreg,jlev,jcol)
+                     &  * v_matrix(jreg2,jreg,jlev)
               end do
             end do
 
@@ -1123,22 +1122,21 @@ end if
                   ! is wavelength dependent.
 
                   ! Recall that overlap indexing is
-                  ! u_matrix(upper_region, lower_region, level,
-                  ! column).
+                  ! u_matrix(upper_region, lower_region, level).
                   transfer_rate_diffuse(jreg,jreg+1) = transfer_scaling &
-                       &  * edge_length(jreg,jlev-1) / max(u_matrix(jreg,jreg2,jlev,jcol),1.0e-5_jprb)
+                       &  * edge_length(jreg,jlev-1) / max(u_matrix(jreg,jreg2,jlev),1.0e-5_jprb)
                   ! Compute transfer rates from region jreg+1 to jreg
                   transfer_rate_diffuse(jreg+1,jreg) = transfer_scaling &
-                       &  * edge_length(jreg,jlev-1) / max(u_matrix(jreg+1,jreg2,jlev,jcol),1.0e-5_jprb)
+                       &  * edge_length(jreg,jlev-1) / max(u_matrix(jreg+1,jreg2,jlev),1.0e-5_jprb)
                 end do
 
                 ! Compute transfer rates directly between regions 1
                 ! and 3 (not used below)
                 if (edge_length(3,jlev) > 0.0_jprb) then
                   transfer_rate_diffuse(1,3) = transfer_scaling &
-                       &  * edge_length(3,jlev-1) / max(u_matrix(1,jreg2,jlev,jcol),1.0e-5_jprb)
+                       &  * edge_length(3,jlev-1) / max(u_matrix(1,jreg2,jlev),1.0e-5_jprb)
                   transfer_rate_diffuse(3,1) = transfer_scaling &
-                       &  * edge_length(3,jlev-1) / max(u_matrix(3,jreg2,jlev,jcol),1.0e-5_jprb)
+                       &  * edge_length(3,jlev-1) / max(u_matrix(3,jreg2,jlev),1.0e-5_jprb)
                 end if
               end if
 
@@ -1207,7 +1205,7 @@ end if
               do jreg3 = 1,nreg
                 do jreg = 1,nreg
                   albedo_part(:,jreg3,jreg) = albedo_part(:,jreg3,jreg) &
-                       &  * v_matrix(jreg2,jreg,jlev,jcol) * total_albedo_below(:,jreg2,jreg2)
+                       &  * v_matrix(jreg2,jreg,jlev) * total_albedo_below(:,jreg2,jreg2)
                 end do
               end do
 #else
@@ -1226,10 +1224,10 @@ end if
                   do jreg4 = 1,nreg ! VIA first lower region (jreg2 is second lower region)
                     if (.not. (jreg4 == jreg .and. jreg4 /= jreg2)) then
                       albedo_part(:,jreg3,jreg) = albedo_part(:,jreg3,jreg) + entrapment(:,jreg3,jreg) &
-                           &  * v_matrix(jreg4,jreg,jlev,jcol) * total_albedo_below(:,jreg2,jreg4)
+                           &  * v_matrix(jreg4,jreg,jlev) * total_albedo_below(:,jreg2,jreg4)
                     else
                       albedo_part(:,jreg3,jreg) = albedo_part(:,jreg3,jreg) &
-                           &  + v_matrix(jreg4,jreg,jlev,jcol) * total_albedo_below(:,jreg2,jreg4) &
+                           &  + v_matrix(jreg4,jreg,jlev) * total_albedo_below(:,jreg2,jreg4) &
                            &  * (transfer_scaling * entrapment(:,jreg3,jreg) &
                            &    +((1.0_jprb-transfer_scaling) * entrapment(:,jreg3,jreg2)))
                     end if
@@ -1299,7 +1297,7 @@ end if
               do jreg3 = 1,nreg
                 do jreg = 1,nreg
                   albedo_part(:,jreg3,jreg) = albedo_part(:,jreg3,jreg) &
-                       &  * v_matrix(jreg2,jreg,jlev,jcol) * total_albedo_below_direct(:,jreg2,jreg2)
+                       &  * v_matrix(jreg2,jreg,jlev) * total_albedo_below_direct(:,jreg2,jreg2)
                 end do
               end do
 #else
@@ -1314,10 +1312,10 @@ end if
                   do jreg4 = 1,nreg
                     if (.not. (jreg4 == jreg .and. jreg4 /= jreg2)) then
                      albedo_part(:,jreg3,jreg) = albedo_part(:,jreg3,jreg) + entrapment(:,jreg3,jreg) &
-                           &  * v_matrix(jreg4,jreg,jlev,jcol) * total_albedo_below_direct(:,jreg2,jreg4)
+                           &  * v_matrix(jreg4,jreg,jlev) * total_albedo_below_direct(:,jreg2,jreg4)
                     else
                       albedo_part(:,jreg3,jreg) = albedo_part(:,jreg3,jreg) &
-                           &  + v_matrix(jreg4,jreg,jlev,jcol) * total_albedo_below_direct(:,jreg2,jreg4) &
+                           &  + v_matrix(jreg4,jreg,jlev) * total_albedo_below_direct(:,jreg2,jreg4) &
                            &  * (transfer_scaling * entrapment(:,jreg3,jreg) &
                            &    +((1.0_jprb-transfer_scaling) * entrapment(:,jreg3,jreg2)))
                     end if
@@ -1353,9 +1351,9 @@ end if
           do jreg = 1,nreg          ! Target layer (jlev-1)
             do jreg2 = 1,nregactive ! Current layer (jlev)
               x_direct_above(:,jreg) = x_direct_above(:,jreg) &
-                   &  + x_direct(:,jreg2) * v_matrix(jreg2,jreg,jlev,jcol)
+                   &  + x_direct(:,jreg2) * v_matrix(jreg2,jreg,jlev)
               x_diffuse_above(:,jreg) = x_diffuse_above(:,jreg) &
-                   &  + x_diffuse(:,jreg2) * v_matrix(jreg2,jreg,jlev,jcol)
+                   &  + x_diffuse(:,jreg2) * v_matrix(jreg2,jreg,jlev)
             end do
           end do
 
@@ -1541,9 +1539,9 @@ end if
           ! Apply downward overlap matrix to compute direct
           ! downwelling flux entering the top of each region in the
           ! layer below
-          flux_dn_below = singlemat_x_vec(ng,ng,nreg,v_matrix(:,:,jlev+1,jcol), &
+          flux_dn_below = singlemat_x_vec(ng,ng,nreg,v_matrix(:,:,jlev+1), &
                &  flux_dn_above)
-          direct_dn_below = singlemat_x_vec(ng,ng,nreg,v_matrix(:,:,jlev+1,jcol), &
+          direct_dn_below = singlemat_x_vec(ng,ng,nreg,v_matrix(:,:,jlev+1), &
                &  direct_dn_above)
         end if
 
