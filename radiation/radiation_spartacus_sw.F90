@@ -35,6 +35,13 @@ module radiation_spartacus_sw
 
   public
 
+! Allow size of inner dimension (number of g-points) to be known at compile time if NG_SW is defined
+#ifdef NG_SW
+  integer, parameter, private :: ng = NG_SW
+#else
+#define ng ng_sw_in
+#endif
+
 contains
 
   ! Small routine for scaling cloud optical depth in the cloudy
@@ -61,7 +68,7 @@ contains
   !     4.1: Adding method
   !     4.2: Overlap and entrapment
   !   5: Compute fluxes
-  subroutine solver_spartacus_sw(nlev,istartcol,iendcol, &
+  subroutine solver_spartacus_sw(ng_sw_in, nlev,istartcol,iendcol, &
        &  config, single_level, thermodynamics, cloud, &
        &  od, ssa, g, od_cloud, ssa_cloud, g_cloud, &
        &  albedo_direct, albedo_diffuse, incoming_sw, &
@@ -90,6 +97,7 @@ contains
     implicit none
 
     ! Inputs
+    integer, intent(in) :: ng_sw_in           ! number of g-points
     integer, intent(in) :: nlev               ! number of model levels
     integer, intent(in) :: istartcol, iendcol ! range of columns to process
     type(config_type),        intent(in) :: config
@@ -99,7 +107,7 @@ contains
 
     ! Gas and aerosol optical depth, single-scattering albedo and
     ! asymmetry factor at each shortwave g-point
-    real(jprb), intent(in), dimension(config%n_g_sw,nlev,istartcol:iendcol) :: &
+    real(jprb), intent(in), dimension(ng,nlev,istartcol:iendcol) :: &
          &  od, ssa, g
 
     ! Cloud and precipitation optical depth, single-scattering albedo and
@@ -110,13 +118,15 @@ contains
     ! Direct and diffuse surface albedos, and the incoming shortwave
     ! flux into a plane perpendicular to the incoming radiation at
     ! top-of-atmosphere in each of the shortwave g points
-    real(jprb), intent(in), dimension(config%n_g_sw,istartcol:iendcol) :: &
+    real(jprb), intent(in), dimension(ng,istartcol:iendcol) :: &
          &  albedo_direct, albedo_diffuse, incoming_sw
 
     ! Output
     type(flux_type), intent(inout):: flux
 
-    integer :: nreg, ng
+    ! Local variables
+    ! integer :: nreg !, ng
+    integer, parameter :: nreg = 3
     integer :: nregactive ! =1 in clear layer, =nreg in a cloudy layer
     integer :: jcol, jlev, jg, jreg, iband, jreg2,jreg3
 #ifdef EXPLICIT_EDGE_ENTRAPMENT
@@ -140,18 +150,18 @@ contains
 
     ! Optical depth, single scattering albedo and asymmetry factor in
     ! each region and (except for asymmetry) at each g-point
-    real(jprb), dimension(config%n_g_sw, config%nregions) &
+    real(jprb), dimension(ng, nreg) &
          &  :: od_region, ssa_region
-    real(jprb), dimension(config%nregions) :: g_region
+    real(jprb), dimension(nreg) :: g_region
 
     ! Scattering optical depths of gases and clouds
     real(jprb) :: scat_od, scat_od_cloud
 
     ! The area fractions of each region
-    real(jprb) :: region_fracs(1:config%nregions,nlev,istartcol:iendcol)
+    real(jprb) :: region_fracs(1:nreg,nlev,istartcol:iendcol)
 
     ! The scaling used for the optical depth in the cloudy regions
-    real(jprb) :: od_scaling(2:config%nregions,nlev,istartcol:iendcol)
+    real(jprb) :: od_scaling(2:nreg,nlev,istartcol:iendcol)
 
     ! The length of the interface between regions jreg and jreg+1 per
     ! unit area of gridbox, equal to L_diff^ab in Hogan and Shonk
@@ -164,100 +174,100 @@ contains
     ! Element i,j gives the rate of 3D transfer of diffuse/direct
     ! radiation from region i to region j, multiplied by the thickness
     ! of the layer in m
-    real(jprb) :: transfer_rate_diffuse(config%nregions,config%nregions)
-    real(jprb) :: transfer_rate_direct(config%nregions,config%nregions)
+    real(jprb) :: transfer_rate_diffuse(nreg,nreg)
+    real(jprb) :: transfer_rate_direct(nreg,nreg)
 
     ! Directional overlap matrices defined at all layer interfaces
     ! including top-of-atmosphere and the surface
-    real(jprb), dimension(config%nregions,config%nregions,nlev+1, &
+    real(jprb), dimension(nreg,nreg,nlev+1, &
          &                istartcol:iendcol) :: u_matrix, v_matrix
 
     ! Two-stream variables
-    real(jprb), dimension(config%n_g_sw, config%nregions) &
+    real(jprb), dimension(ng, nreg) &
          &  :: gamma1, gamma2, gamma3
 
     ! Matrix Gamma multiplied by the layer thickness z1, so units
     ! metres.  After calling expm, this array contains the matrix
     ! exponential of the original.
-    real(jprb) :: Gamma_z1(config%n_g_sw,3*config%nregions,3*config%nregions)
+    real(jprb) :: Gamma_z1(ng,3*nreg,3*nreg)
 
     ! Diffuse reflection and transmission matrices of each layer
-    real(jprb), dimension(config%n_g_sw, config%nregions, &
-         &  config%nregions, nlev) :: reflectance, transmittance
+    real(jprb), dimension(ng, nreg, &
+         &  nreg, nlev) :: reflectance, transmittance
 
     ! Clear-sky diffuse reflection and transmission matrices of each
     ! layer
-    real(jprb), dimension(config%n_g_sw, nlev) :: ref_clear, trans_clear
+    real(jprb), dimension(ng, nlev) :: ref_clear, trans_clear
 
     ! Matrices translating the direct flux entering the layer from
     ! above to the reflected radiation exiting upwards (ref_dir) and
     ! the scattered radiation exiting downwards (trans_dir_diff),
     ! along with the direct unscattered transmission matrix
     ! (trans_dir_dir).
-    real(jprb), dimension(config%n_g_sw, config%nregions, config%nregions, nlev) &
+    real(jprb), dimension(ng, nreg, nreg, nlev) &
          &  :: ref_dir, trans_dir_diff, trans_dir_dir
     ! ...clear-sky equivalents
-    real(jprb), dimension(config%n_g_sw, nlev) &
+    real(jprb), dimension(ng, nlev) &
          &  :: ref_dir_clear, trans_dir_diff_clear, trans_dir_dir_clear
 
     ! The fluxes downwelling from the bottom of the layer due to
     ! scattering by the direct beam within the layer
-    real(jprb), dimension(config%n_g_sw, config%nregions) :: source_dn
+    real(jprb), dimension(ng, nreg) :: source_dn
     ! ...clear-sky equivalent
-    real(jprb), dimension(config%n_g_sw) :: source_dn_clear
+    real(jprb), dimension(ng) :: source_dn_clear
 
     ! The fluxes upwelling just above the base of a layer due to
     ! reflection of the direct downwelling beam; this is just used as
     ! a temporary variable
-    real(jprb), dimension(config%n_g_sw, config%nregions) :: total_source
+    real(jprb), dimension(ng, nreg) :: total_source
 
     ! Direct downwelling flux below and above an interface between
     ! layers into a plane perpendicular to the direction of the sun
-    real(jprb), dimension(config%n_g_sw, config%nregions) &
+    real(jprb), dimension(ng, nreg) &
          &  :: direct_dn_below, direct_dn_above
     ! ...clear-sky equivalent (no distinction between "above/below")
-    real(jprb), dimension(config%n_g_sw) :: direct_dn_clear
+    real(jprb), dimension(ng) :: direct_dn_clear
 
     ! Total albedo of the atmosphere/surface just above a layer
     ! interface with respect to downwelling diffuse and direct
     ! radiation at that interface, where level index = 1 corresponds
     ! to the top-of-atmosphere
-    real(jprb), dimension(config%n_g_sw, config%nregions, &
-         &  config%nregions, nlev+1) :: total_albedo, total_albedo_direct
+    real(jprb), dimension(ng, nreg, &
+         &  nreg, nlev+1) :: total_albedo, total_albedo_direct
     ! ...clear-sky equivalent
-    real(jprb), dimension(config%n_g_sw, nlev+1) &
+    real(jprb), dimension(ng, nlev+1) &
          &  :: total_albedo_clear, total_albedo_clear_direct
 
     ! As total_albedo, but just below a layer interface
-    real(jprb), dimension(config%n_g_sw, config%nregions, config%nregions) &
+    real(jprb), dimension(ng, nreg, nreg) &
          &  :: total_albedo_below, total_albedo_below_direct
 
     ! Temporary array for applying adding method with entrapment to
     ! albedo matrices
-    real(jprb), dimension(config%n_g_sw, config%nregions, config%nregions) &
+    real(jprb), dimension(ng, nreg, nreg) &
          &  :: albedo_part
 
     ! Horizontal migration distance (m) of reflected light
-    real(jprb), dimension(config%n_g_sw, config%nregions) &
+    real(jprb), dimension(ng, nreg) &
          &  :: x_diffuse, x_direct
     ! Temporary variables when applying overlap rules
-    real(jprb), dimension(config%n_g_sw, config%nregions) &
+    real(jprb), dimension(ng, nreg) &
          &  :: x_diffuse_above, x_direct_above
 
-    real(jprb), dimension(config%n_g_sw, config%nregions, config%nregions) &
+    real(jprb), dimension(ng, nreg, nreg) &
          &  :: entrapment
 
     ! The following is used to store matrices of the form I-A*B that
     ! are used on the denominator of some expressions
-    real(jprb) :: denominator(config%n_g_sw,config%nregions,config%nregions)
+    real(jprb) :: denominator(ng,nreg,nreg)
 
     ! Clear-sky equivalent, but actually its reciprocal to replace
     ! some divisions by multiplications
-    real(jprb), dimension(config%n_g_sw) :: inv_denom_scalar
+    real(jprb), dimension(ng) :: inv_denom_scalar
 
     ! Final step in working out how much transport between regions
     ! above occurs
-    real(jprb), dimension(config%n_g_sw) :: fractal_factor
+    real(jprb), dimension(ng) :: fractal_factor
 
     ! Inverse of cloud effective size (m^-1)
     real(jprb) :: inv_effective_size
@@ -266,12 +276,12 @@ contains
     real(jprb) :: dz, layer_depth(nlev)
 
     ! Upwelling and downwelling fluxes above/below layer interfaces
-    real(jprb), dimension(config%n_g_sw, config%nregions) &
+    real(jprb), dimension(ng, nreg) &
          &  :: flux_up_above, flux_dn_above, flux_dn_below
     ! Clear-sky upwelling and downwelling fluxes (which don't
     ! distinguish between whether they are above/below a layer
     ! interface)
-    real(jprb), dimension(config%n_g_sw) :: flux_up_clear, flux_dn_clear
+    real(jprb), dimension(ng) :: flux_up_clear, flux_dn_clear
 
     ! Index of top-most cloudy layer, or nlev+1 if no cloud
     integer :: i_cloud_top
@@ -299,8 +309,8 @@ contains
     ! --------------------------------------------------------
 
     ! Copy array dimensions to local variables for convenience
-    nreg = config%nregions
-    ng   = config%n_g_sw
+!     nreg = config%nregions
+!     ng   = config%n_g_sw
 
     ! Reset count of number of calls to the two ways to compute
     ! reflectance/transmission matrices

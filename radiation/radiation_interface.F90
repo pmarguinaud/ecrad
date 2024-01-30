@@ -458,7 +458,7 @@ contains
                &  g_lw_cloud, planck_hl, lw_emission, lw_albedo, flux)
         else if (config%i_solver_lw == ISolverSPARTACUS) then
           ! Compute fluxes using the SPARTACUS longwave solver
-          call solver_spartacus_lw(nlev,istartcol,iendcol, &
+          call solver_spartacus_lw(config%n_g_lw, nlev,istartcol,iendcol, &
                &  config, thermodynamics, cloud, &
                &  od_lw, ssa_lw, g_lw, od_lw_cloud, ssa_lw_cloud, g_lw_cloud, &
                &  planck_hl, lw_emission, lw_albedo, flux)
@@ -496,7 +496,7 @@ contains
                &  incoming_sw, flux)
         else if (config%i_solver_sw == ISolverSPARTACUS) then
           ! Compute fluxes using the SPARTACUS shortwave solver
-          call solver_spartacus_sw(nlev,istartcol,iendcol, &
+          call solver_spartacus_sw(config%n_g_sw,nlev,istartcol,iendcol, &
                &  config, single_level, thermodynamics, cloud, &
                &  od_sw, ssa_sw, g_sw, od_sw_cloud, ssa_sw_cloud, &
                &  g_sw_cloud, sw_albedo_direct, sw_albedo_diffuse, &

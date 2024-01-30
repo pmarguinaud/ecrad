@@ -18,10 +18,18 @@
 !   2018-09-03  R. Hogan  Security via min_cloud_effective_size
 !   2018-10-08  R. Hogan  Call calc_region_properties
 !   2019-01-12  R. Hogan  Use inv_inhom_effective_size if allocated
-
+!   2022-09-01  P. Ukkonen  Optimizations for much better performance with ECCKD, including:
+!                           batching section 3 computations, faster kernels, ng can be defined at compile time
 module radiation_spartacus_lw
 
   public
+
+! Allow size of inner dimension (number of g-points) to be known at compile time if NG_LW is defined
+#ifdef NG_LW
+  integer, parameter, private :: ng = NG_LW
+#else
+#define ng ng_lw_in
+#endif
 
 contains
 
@@ -47,7 +55,7 @@ contains
   !       3.3b: g-points without 3D effects
   !   4: Compute total sources and albedos
   !   5: Compute fluxes
-  subroutine solver_spartacus_lw(nlev,istartcol,iendcol, &
+  subroutine solver_spartacus_lw(ng_lw_in, nlev,istartcol,iendcol, &
        &  config, thermodynamics, cloud, &
        &  od, ssa, g, od_cloud, ssa_cloud, g_cloud, planck_hl, &
        &  emission, albedo, &
@@ -73,6 +81,7 @@ contains
     implicit none
 
     ! Inputs
+    integer, intent(in) :: ng_lw_in           ! number of g-points
     integer, intent(in) :: nlev               ! number of model levels
     integer, intent(in) :: istartcol, iendcol ! range of columns to process
     type(config_type), intent(in)        :: config
@@ -81,7 +90,7 @@ contains
 
     ! Gas and aerosol optical depth of each layer at each longwave
     ! g-point
-    real(jprb), intent(in), dimension(config%n_g_lw,nlev,istartcol:iendcol) :: od
+    real(jprb), intent(in), dimension(ng,nlev,istartcol:iendcol) :: od
 
     ! Gas and aerosol single-scattering albedo and asymmetry factor,
     ! only if longwave scattering by aerosols is to be represented
@@ -99,18 +108,19 @@ contains
          &                            nlev,istartcol:iendcol) :: ssa_cloud, g_cloud
 
     ! Planck function (emitted flux from a black body) at half levels
-    real(jprb), intent(in), dimension(config%n_g_lw,nlev+1,istartcol:iendcol) &
+    real(jprb), intent(in), dimension(ng,nlev+1,istartcol:iendcol) &
          &  :: planck_hl
 
     ! Emission (Planck*emissivity) and albedo (1-emissivity) at the
     ! surface at each longwave g-point
-    real(jprb), intent(in), dimension(config%n_g_lw, istartcol:iendcol) &
+    real(jprb), intent(in), dimension(ng, istartcol:iendcol) &
          &  :: emission, albedo
 
     ! Output
     type(flux_type),          intent(inout):: flux
 
-    integer :: nreg, ng
+    integer, parameter :: nreg = 3
+
     integer :: nregActive ! =1 in clear layer, =nreg in a cloudy layer
     integer :: jcol, jlev, jg, jreg, iband, jreg2
     integer :: ng3D ! Number of g-points with small enough gas optical
@@ -131,17 +141,17 @@ contains
 
     ! Optical depth, single scattering albedo and asymmetry factor in
     ! each region at each g-point
-    real(jprb), dimension(config%n_g_lw, config%nregions) &
+    real(jprb), dimension(ng, config%nregions) &
          &  :: od_region, ssa_region, g_region
 
     ! Scattering optical depths of gases and clouds
     real(jprb) :: scat_od, scat_od_cloud
 
     ! The area fractions of each region
-    real(jprb) :: region_fracs(1:config%nregions,nlev,istartcol:iendcol)
+    real(jprb) :: region_fracs(1:nreg,nlev,istartcol:iendcol)
 
     ! The scaling used for the optical depth in the cloudy regions
-    real(jprb) :: od_scaling(2:config%nregions,nlev,istartcol:iendcol)
+    real(jprb) :: od_scaling(2:nreg,nlev,istartcol:iendcol)
 
     ! The length of the interface between regions per unit area of
     ! gridbox, equal to L_diff^ab in Hogan and Shonk (2013). This is
@@ -153,110 +163,110 @@ contains
     ! Element i,j gives the rate of 3D transfer of diffuse
     ! radiation from region i to region j, multiplied by the thickness
     ! of the layer in m
-    real(jprb) :: transfer_rate(config%nregions,config%nregions)
+    real(jprb) :: transfer_rate(nreg,nreg)
 
     ! Directional overlap matrices defined at all layer interfaces
     ! including top-of-atmosphere and the surface
-    real(jprb), dimension(config%nregions,config%nregions,nlev+1,istartcol:iendcol) &
+    real(jprb), dimension(nreg,nreg,nlev+1,istartcol:iendcol) &
          &  :: u_matrix, v_matrix
 
     ! Two-stream variables
-    real(jprb), dimension(config%n_g_lw, config%nregions) &
+    real(jprb), dimension(ng, nreg) &
          &  :: gamma1, gamma2
 
     ! Matrix Gamma multiplied by the layer thickness z1, so units
     ! metres.  After calling expm, this array contains the matrix
     ! exponential of the original.
-    real(jprb), dimension(config%n_g_lw, 2*config%nregions, &
-         &  2*config%nregions) :: Gamma_z1
+    real(jprb), dimension(ng, 2*nreg, &
+         &  2*nreg) :: Gamma_z1
 
     ! Diffuse reflection and transmission matrices of each layer
-    real(jprb), dimension(config%n_g_lw, config%nregions, &
-         &  config%nregions, nlev) :: reflectance, transmittance
+    real(jprb), dimension(ng, nreg, &
+         &  nreg, nlev) :: reflectance, transmittance
 
     ! Clear-sky diffuse reflection and transmission matrices of each
     ! layer
-    real(jprb), dimension(config%n_g_lw, nlev) :: ref_clear, trans_clear
+    real(jprb), dimension(ng, nlev) :: ref_clear, trans_clear
 
     ! If the Planck term at the top of a layer in each region is the
     ! vector b0 then the following is vector [-b0; b0]*dz
-    real(jprb), dimension(config%n_g_lw,2*config%nregions) :: planck_top
+    real(jprb), dimension(ng,2*nreg) :: planck_top
 
     ! The difference between the Planck terms at the bottom and top of
     ! a layer, doubled as with planck_top; in terms of b' in the
     ! paper, planck_diff is [-b'; b']*dz*dz
-    real(jprb), dimension(config%n_g_lw,2*config%nregions) :: planck_diff
+    real(jprb), dimension(ng,2*nreg) :: planck_diff
 
     ! Parts of the particular solution associated with the
     ! inhomogeneous ODE. In terms of quantities from the paper,
     ! solution0 is [c0;d0] and solution_diff is [c';d']*dz.
-    real(jprb), dimension(config%n_g_lw,2*config%nregions) &
+    real(jprb), dimension(ng,2*nreg) &
          &  :: solution0, solution_diff
 
     ! Used for computing the Planck emission per layer
-    real(jprb), dimension(config%n_g_lw,config%nregions) &
+    real(jprb), dimension(ng,nreg) &
          &  :: tmp_vectors
 
     ! The fluxes upwelling from the top of a layer (source_up) and
     ! downwelling from the bottom of the layer (source_dn) due to
     ! emission
-    real(jprb), dimension(config%n_g_lw, config%nregions, nlev) &
+    real(jprb), dimension(ng, nreg, nlev) &
          &  :: source_up, source_dn
     ! ...clear-sky equivalents
-    real(jprb), dimension(config%n_g_lw, nlev) &
+    real(jprb), dimension(ng, nlev) &
          &  :: source_up_clear, source_dn_clear
 
     ! Upwelling radiation just above a layer interface due to emission
     ! below that interface, where level index = 1 corresponds to the
     ! top-of-atmosphere
-    real(jprb), dimension(config%n_g_lw, config%nregions, nlev+1) &
+    real(jprb), dimension(ng, nreg, nlev+1) &
          &  :: total_source
     ! ...clear-sky equivalent
-    real(jprb), dimension(config%n_g_lw, nlev+1) :: total_source_clear
+    real(jprb), dimension(ng, nlev+1) :: total_source_clear
 
     ! As total_source, but just below a layer interface
-    real(jprb), dimension(config%n_g_lw, config%nregions) &
+    real(jprb), dimension(ng, nreg) &
          &  :: total_source_below
 
     ! Total albedo of the atmosphere/surface just above a layer
     ! interface with respect to downwelling diffuse radiation at that
     ! interface, where level index = 1 corresponds to the
     ! top-of-atmosphere
-    real(jprb), dimension(config%n_g_lw, config%nregions, &
-         &  config%nregions, nlev+1) :: total_albedo
+    real(jprb), dimension(ng, nreg, &
+         &  nreg, nlev+1) :: total_albedo
     ! ...clear-sky equivalent
-    real(jprb), dimension(config%n_g_lw, nlev+1) :: total_albedo_clear
+    real(jprb), dimension(ng, nlev+1) :: total_albedo_clear
 
     ! As total_albedo, but just below a layer interface
-    real(jprb), dimension(config%n_g_lw, config%nregions, config%nregions) &
+    real(jprb), dimension(ng, nreg, nreg) &
          &  :: total_albedo_below
 
     ! The following is used to store matrices of the form I-A*B that
     ! are used on the denominator of some expressions
-    real(jprb), dimension(config%n_g_lw, config%nregions, config%nregions) &
+    real(jprb), dimension(ng, nreg, nreg) &
          &  :: denominator
     ! Clear-sky equivalent, but actually its reciprocal to replace
     ! some divisions by multiplications
-    real(jprb), dimension(config%n_g_lw) :: inv_denom_scalar
+    real(jprb), dimension(ng) :: inv_denom_scalar
 
     ! Layer depth (m)
     real(jprb) :: dz
 
     ! Upwelling and downwelling fluxes above/below layer interfaces
-    real(jprb), dimension(config%n_g_lw, config%nregions) &
+    real(jprb), dimension(ng, nreg) &
          &  :: flux_up_above, flux_dn_above, flux_dn_below
     ! Clear-sky upwelling and downwelling fluxes (which don't
     ! distinguish between whether they are above/below a layer
     ! interface)
-    real(jprb), dimension(config%n_g_lw) :: flux_up_clear, flux_dn_clear
+    real(jprb), dimension(ng) :: flux_up_clear, flux_dn_clear
 
     ! Parameterization of internal flux distribution in a cloud that
     ! can lead to the flux just about to exit a cloud being different
     ! from the mean in-cloud value.  "lateral_od" is the typical
     ! absorption optical depth through the cloud in a horizontal
     ! direction.
-    real(jprb), dimension(config%n_g_lw) :: lateral_od, sqrt_1_minus_ssa
-    real(jprb), dimension(config%n_g_lw) :: side_emiss_thick, side_emiss
+    real(jprb), dimension(ng) :: lateral_od, sqrt_1_minus_ssa
+    real(jprb), dimension(ng) :: side_emiss_thick, side_emiss
 
     ! In the optically thin limit, the flux near the edge is greater
     ! than that in the interior
@@ -281,8 +291,8 @@ contains
     ! --------------------------------------------------------
 
     ! Copy array dimensions to local variables for convenience
-    nreg = config%nregions
-    ng = config%n_g_lw
+    ! nreg = config%nregions
+    ! ng = config%n_g_lw
 
     ! Reset count of number of calls to the two ways to compute
     ! reflectance/transmission matrices
