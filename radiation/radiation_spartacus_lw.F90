@@ -141,8 +141,7 @@ contains
 
     ! Optical depth, single scattering albedo and asymmetry factor in
     ! each region at each g-point
-    real(jprb), dimension(ng, config%nregions) &
-         &  :: od_region, ssa_region, g_region
+    real(jprb), dimension(ng, nreg) :: od_region, ssa_region, g_region
 
     ! Scattering optical depths of gases and clouds
     real(jprb) :: scat_od, scat_od_cloud
@@ -170,18 +169,15 @@ contains
     real(jprb), dimension(nreg,nreg,nlev+1) :: u_matrix, v_matrix
 
     ! Two-stream variables
-    real(jprb), dimension(ng, nreg) &
-         &  :: gamma1, gamma2
+    real(jprb), dimension(ng, nreg) :: gamma1, gamma2
 
     ! Matrix Gamma multiplied by the layer thickness z1, so units
     ! metres.  After calling expm, this array contains the matrix
     ! exponential of the original.
-    real(jprb), dimension(ng, 2*nreg, &
-         &  2*nreg) :: Gamma_z1
+    real(jprb), dimension(ng, 2*nreg, 2*nreg) :: Gamma_z1
 
     ! Diffuse reflection and transmission matrices of each layer
-    real(jprb), dimension(ng, nreg, &
-         &  nreg, nlev) :: reflectance, transmittance
+    real(jprb), dimension(ng, nreg, nreg, nlev) :: reflectance, transmittance
 
     ! Clear-sky diffuse reflection and transmission matrices of each
     ! layer
@@ -199,51 +195,46 @@ contains
     ! Parts of the particular solution associated with the
     ! inhomogeneous ODE. In terms of quantities from the paper,
     ! solution0 is [c0;d0] and solution_diff is [c';d']*dz.
-    real(jprb), dimension(ng,2*nreg) &
-         &  :: solution0, solution_diff
+    real(jprb), dimension(ng,2*nreg) :: solution0, solution_diff
 
     ! Used for computing the Planck emission per layer
-    real(jprb), dimension(ng,nreg) &
-         &  :: tmp_vectors
+    real(jprb), dimension(ng,nreg)  :: tmp_vectors
 
     ! The fluxes upwelling from the top of a layer (source_up) and
     ! downwelling from the bottom of the layer (source_dn) due to
     ! emission
-    real(jprb), dimension(ng, nreg, nlev) &
-         &  :: source_up, source_dn
+    real(jprb), dimension(ng, nreg, nlev) :: source_up, source_dn
     ! ...clear-sky equivalents
-    real(jprb), dimension(ng, nlev) &
-         &  :: source_up_clear, source_dn_clear
+    real(jprb), dimension(ng, nlev)       :: source_up_clear, source_dn_clear
 
     ! Upwelling radiation just above a layer interface due to emission
     ! below that interface, where level index = 1 corresponds to the
     ! top-of-atmosphere
-    real(jprb), dimension(ng, nreg, nlev+1) &
-         &  :: total_source
+    real(jprb), dimension(ng, nreg, nlev+1) :: total_source
     ! ...clear-sky equivalent
     real(jprb), dimension(ng, nlev+1) :: total_source_clear
 
     ! As total_source, but just below a layer interface
-    real(jprb), dimension(ng, nreg) &
-         &  :: total_source_below
+    real(jprb), dimension(ng, nreg) :: total_source_below
 
     ! Total albedo of the atmosphere/surface just above a layer
     ! interface with respect to downwelling diffuse radiation at that
     ! interface, where level index = 1 corresponds to the
     ! top-of-atmosphere
-    real(jprb), dimension(ng, nreg, &
-         &  nreg, nlev+1) :: total_albedo
+    real(jprb), dimension(ng, nreg, nreg, nlev+1) :: total_albedo
     ! ...clear-sky equivalent
     real(jprb), dimension(ng, nlev+1) :: total_albedo_clear
 
     ! As total_albedo, but just below a layer interface
-    real(jprb), dimension(ng, nreg, nreg) &
-         &  :: total_albedo_below
+    real(jprb), dimension(ng, nreg, nreg) :: total_albedo_below
+
+    ! Temporary variables for albedo computations
+    real(jprb), dimension(ng, nreg, nreg) :: albedo_mat
+    real(jprb), dimension(ng, nreg)       :: albedo_part
 
     ! The following is used to store matrices of the form I-A*B that
     ! are used on the denominator of some expressions
-    real(jprb), dimension(ng, nreg, nreg) &
-         &  :: denominator
+    real(jprb), dimension(ng, nreg, nreg) :: denominator
     ! Clear-sky equivalent, but actually its reciprocal to replace
     ! some divisions by multiplications
     real(jprb), dimension(ng) :: inv_denom_scalar
@@ -886,18 +877,26 @@ contains
         else if (config%do_3d_effects .or. &
              &   config%do_3d_lw_multilayer_effects) then
           ! Cloudy layer: use matrix adding method
-          denominator = identity_minus_mat_x_mat(ng,ng,nreg,&
-               &  total_albedo(:,:,:,jlev+1), reflectance(:,:,:,jlev))
-          total_albedo_below = reflectance(:,:,:,jlev) &
-               &  + mat_x_mat(ng,ng,nreg,transmittance(:,:,:,jlev), &
-               &  solve_mat(ng,ng,nreg,denominator, &
-               &  mat_x_mat(ng,ng,nreg,total_albedo(:,:,:,jlev+1), &
-               &  transmittance(:,:,:,jlev))))
-          total_source_below = source_up(:,:,jlev) &
-               &  + mat_x_vec(ng,ng,nreg,transmittance(:,:,:,jlev), &
-               &  solve_vec(ng,ng,nreg,denominator, &
-               &  total_source(:,:,jlev+1) + mat_x_vec(ng,ng,nreg, &
-               &  total_albedo(:,:,:,jlev+1),source_dn(:,:,jlev))))
+          call identity_minus_mat_x_mat_3_lw(ng, total_albedo(:,:,:,jlev+1), &
+                &  reflectance(:,:,:,jlev), denominator)
+
+          ! Let's write the terms explicitly (avoids array temporaries)
+          associate(B1=>total_albedo_below)
+            ! B=C*D, then solve AX=B, finally Y = Z*X
+            call mat_x_mat_3_lw(ng, &                             	! 1. B = C*D
+                  &  total_albedo(:,:,:,jlev+1), transmittance(:,:,:,jlev), B1)
+            call solve_mat_3_lw(ng, denominator, B1, albedo_mat)            	! 2. solve AX=B
+            call mat_x_mat_3_lw(ng, transmittance(:,:,:,jlev), albedo_mat, & ! 3. Y = Z*X ...
+                  & total_albedo_below)
+            total_albedo_below = total_albedo_below + reflectance(:,:,:,jlev) ! + R
+          end associate
+          ! Source
+          albedo_part = mat_x_vec_3_lw(ng,total_albedo(:,:,:,jlev+1),source_dn(:,:,jlev))
+          albedo_part = albedo_part + total_source(:,:,jlev+1)
+          call solve_vec_3_lw_inplace(ng, denominator, albedo_part) ! Solve Ax=b, overwriting b with x
+          total_source_below = source_up(:,:,jlev)  &
+              & + mat_x_vec_3_lw(ng,transmittance(:,:,:,jlev), albedo_part)
+
         else
           ! Cloudy layer for which reflectance, transmittance and
           ! total_albedo matrices are diagonal
@@ -928,7 +927,7 @@ contains
           total_source(:,:,jlev) = 0.0_jprb
           total_source(:,1,jlev) = total_source_below(:,1)
         else
-          total_source(:,:,jlev) = singlemat_x_vec(ng,ng,nreg,&
+          total_source(:,:,jlev) = singlemat_x_vec_lw(ng,&
                &  u_matrix(:,:,jlev), total_source_below)
 
 !          if (config%do_3d_effects .or. config%do_3d_lw_multilayer_effects) then
@@ -1021,14 +1020,14 @@ contains
           flux_up_above(:,2:nreg) = 0.0_jprb
         else if (config%do_3d_effects .or. config%do_3d_lw_multilayer_effects) then
           ! Matrix operations for cloudy layer
-          denominator = identity_minus_mat_x_mat(ng,ng,nreg,reflectance(:,:,:,jlev), &
-               &  total_albedo(:,:,:,jlev+1))
-          flux_dn_above = solve_vec(ng,ng,nreg,denominator, &
-               &  mat_x_vec(ng,ng,nreg,transmittance(:,:,:,jlev),flux_dn_below) &
-               &  + mat_x_vec(ng,ng,nreg,reflectance(:,:,:,jlev), &
+          call identity_minus_mat_x_mat_3_lw(ng,reflectance(:,:,:,jlev), &
+                &  total_albedo(:,:,:,jlev+1), denominator)
+          flux_dn_above = solve_vec_3_lw(ng,denominator, &
+               &  mat_x_vec_3_lw(ng,transmittance(:,:,:,jlev),flux_dn_below) &
+               &  + mat_x_vec_3_lw(ng,reflectance(:,:,:,jlev), &
                &  total_source(:,:,jlev+1)) &
                &  + source_dn(:,:,jlev))
-          flux_up_above = mat_x_vec(ng,ng,nreg,total_albedo(:,:,:,jlev+1), &
+          flux_up_above = mat_x_vec_3_lw(ng,total_albedo(:,:,:,jlev+1), &
                &  flux_dn_above) + total_source(:,:,jlev+1)
         else
           do jreg = 1,nreg
@@ -1049,7 +1048,7 @@ contains
         if (is_clear_sky_layer(jlev) .and. is_clear_sky_layer(jlev+1)) then
           flux_dn_below = flux_dn_above
         else
-          flux_dn_below = singlemat_x_vec(ng,ng,nreg,v_matrix(:,:,jlev+1), &
+          flux_dn_below = singlemat_x_vec_lw(ng,v_matrix(:,:,jlev+1), &
                &    flux_dn_above)
         end if
 

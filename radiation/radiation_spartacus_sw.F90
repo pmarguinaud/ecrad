@@ -244,7 +244,7 @@ contains
     ! Temporary array for applying adding method with entrapment to
     ! albedo matrices
     real(jprb), dimension(ng, nreg, nreg) &
-         &  :: albedo_part
+         &  :: albedo_part, albedo_part2
 
     ! Horizontal migration distance (m) of reflected light
     real(jprb), dimension(ng, nreg) &
@@ -924,20 +924,31 @@ contains
           end do
         else
           ! Cloudy layer: use matrix adding method
-          denominator = identity_minus_mat_x_mat(ng,ng,nreg, &
-               &  total_albedo(:,:,:,jlev+1), reflectance(:,:,:,jlev))
-          total_albedo_below = reflectance(:,:,:,jlev) &
-               &  + mat_x_mat(ng,ng,nreg,transmittance(:,:,:,jlev), &
-               &  solve_mat(ng,ng,nreg,denominator, &
-               &  mat_x_mat(ng,ng,nreg,total_albedo(:,:,:,jlev+1), &
-               &  transmittance(:,:,:,jlev))))
-          total_albedo_below_direct = ref_dir(:,:,:,jlev) &
-               &  + mat_x_mat(ng,ng,nreg,transmittance(:,:,:,jlev), &
-               &  solve_mat(ng,ng,nreg,denominator, &
-               &    mat_x_mat(ng,ng,nreg,total_albedo_direct(:,:,:,jlev+1), &
-               &                       trans_dir_dir(:,:,:,jlev)) &
-               &   +mat_x_mat(ng,ng,nreg,total_albedo(:,:,:,jlev+1), &
-               &                       trans_dir_diff(:,:,:,jlev))))
+          call identity_minus_mat_x_mat_3_sw(ng, &
+                &  total_albedo(:,:,:,jlev+1), reflectance(:,:,:,jlev), denominator)
+          ! Let's write the terms explicitly for clarity as well
+          ! as performance (avoids array temporaries being created)
+          !  B=C*D, then solve AX=B, finally Y = Z*X
+          associate(B1=>total_albedo_below, B2=>total_albedo_below_direct, X=>albedo_part)
+
+            call mat_x_mat_3_sw(ng,&                                ! 1. B = C*D
+                & total_albedo(:,:,:,jlev+1), transmittance(:,:,:,jlev), B1)
+            call solve_mat_3_sw(ng,denominator, B1, X)              ! 2. solve AX=B
+            call mat_x_mat_3_sw(ng, transmittance(:,:,:,jlev), X, & ! 3. Y = Z*X ...
+                & total_albedo_below)
+            total_albedo_below = total_albedo_below + reflectance(:,:,:,jlev) ! + R
+
+            ! Direct
+            call mat_x_mat_3_sw(ng, &                               ! 1. B = C1*D1 ...
+                &  total_albedo_direct(:,:,:,jlev+1), trans_dir_dir(:,:,:,jlev), X)
+            call mat_x_mat_3_sw(ng, &                               ! + C2+D3
+                & total_albedo(:,:,:,jlev+1), trans_dir_diff(:,:,:,jlev), B2)
+            B2 = X + B2
+            call solve_mat_3_sw(ng,denominator,B2, X)               ! 2. solve AX=B
+            call mat_x_mat_3_sw(ng,transmittance(:,:,:,jlev),X,B2)  ! Z*X
+            total_albedo_below_direct = ref_dir(:,:,:,jlev) + B2    ! 3. Y = R + Z*X
+
+          end associate
         end if
 
         ! --------------------------------------------------------
@@ -992,14 +1003,14 @@ contains
              &  .or. is_clear_sky_layer(jlev-1)) then
           ! "Maximum entrapment": use the overlap matrices u_matrix and v_matrix
           ! (this is the original SPARTACUS method)
-          total_albedo(:,:,:,jlev) = singlemat_x_mat(ng,ng,nreg,&
-               &  u_matrix(:,:,jlev), &
-               &  mat_x_singlemat(ng,ng,nreg,total_albedo_below,&
-               &  v_matrix(:,:,jlev)))
-          total_albedo_direct(:,:,:,jlev) = singlemat_x_mat(ng,ng,nreg,&
-               &  u_matrix(:,:,jlev), &
-               &  mat_x_singlemat(ng,ng,nreg,total_albedo_below_direct,&
-               &  v_matrix(:,:,jlev)))
+          albedo_part = mat_x_singlemat_3_sw(ng,&
+               & total_albedo_below,v_matrix(:,:,jlev))
+          total_albedo(:,:,:,jlev) = singlemat_x_mat_3_sw(ng,&
+               &  u_matrix(:,:,jlev), albedo_part)
+          albedo_part = mat_x_singlemat_3_sw(ng,&
+               & total_albedo_below_direct,v_matrix(:,:,jlev))
+          total_albedo_direct(:,:,:,jlev) = singlemat_x_mat_3_sw(ng,&
+               &  u_matrix(:,:,jlev), albedo_part)
 
         else if (config%i_3d_sw_entrapment == IEntrapmentZero) then
           ! "Zero entrapment": even radiation transported
@@ -1046,19 +1057,19 @@ contains
           do jreg = 1,nreg
             albedo_part(:,jreg,jreg) = 0.0_jprb
           end do
-          total_albedo(:,:,:,jlev) = singlemat_x_mat(ng,ng,nreg,&
-               &  u_matrix(:,:,jlev), &
-               &  mat_x_singlemat(ng,ng,nreg,albedo_part,&
-               &  v_matrix(:,:,jlev)))
+          albedo_part2 = mat_x_singlemat_3_sw(ng,albedo_part,&
+               & v_matrix(:,:,jlev))
+          total_albedo(:,:,:,jlev) = singlemat_x_mat_3_sw(ng,&
+               &  u_matrix(:,:,jlev), albedo_part2)
           ! ...then direct radiation:
           albedo_part = total_albedo_below_direct
           do jreg = 1,nreg
             albedo_part(:,jreg,jreg) = 0.0_jprb
           end do
-          total_albedo_direct(:,:,:,jlev) = singlemat_x_mat(ng,ng,nreg,&
-               &  u_matrix(:,:,jlev), &
-               &  mat_x_singlemat(ng,ng,nreg,albedo_part,&
-               &  v_matrix(:,:,jlev)))
+          albedo_part2 = mat_x_singlemat_3_sw(ng,albedo_part,&
+               & v_matrix(:,:,jlev))
+          total_albedo_direct(:,:,:,jlev) = singlemat_x_mat_3_sw(ng,&
+               &  u_matrix(:,:,jlev), albedo_part2)
 
 #ifdef EXPLICIT_EDGE_ENTRAPMENT
 end if
@@ -1385,7 +1396,7 @@ end if
       ! We're using flux_up_above as a container; actually its
       ! interpretation at top of atmosphere here is just 'below' the
       ! TOA interface, so using the regions of the first model layer
-      flux_up_above = mat_x_vec(ng,ng,nreg,total_albedo_direct(:,:,:,1),direct_dn_below)
+      flux_up_above = mat_x_vec_3_sw(ng,total_albedo_direct(:,:,:,1),direct_dn_below)
 
       if (config%do_clear) then
         flux_dn_clear = 0.0_jprb
@@ -1508,15 +1519,15 @@ end if
           end do
         else
           ! Matrix operations for cloudy layer
-          denominator = identity_minus_mat_x_mat(ng,ng,nreg,reflectance(:,:,:,jlev), &
-               &  total_albedo(:,:,:,jlev+1))
-          total_source = mat_x_vec(ng,ng,nreg,total_albedo_direct(:,:,:,jlev+1),direct_dn_above)
+          call identity_minus_mat_x_mat_3_sw(ng,reflectance(:,:,:,jlev), &
+              &  total_albedo(:,:,:,jlev+1), denominator)
+          total_source = mat_x_vec_3_sw(ng,total_albedo_direct(:,:,:,jlev+1),direct_dn_above)
 
-          flux_dn_above = solve_vec(ng,ng,nreg,denominator, &
-               &  mat_x_vec(ng,ng,nreg,transmittance(:,:,:,jlev),flux_dn_below) &
-               &  + mat_x_vec(ng,ng,nreg,reflectance(:,:,:,jlev), total_source(:,:)) &
+          flux_dn_above = solve_vec_3_sw(ng,denominator, &
+               &  mat_x_vec_3_sw(ng,transmittance(:,:,:,jlev),flux_dn_below) &
+               &  + mat_x_vec_3_sw(ng,reflectance(:,:,:,jlev), total_source(:,:)) &
                &  + source_dn(:,:))
-          flux_up_above = mat_x_vec(ng,ng,nreg,total_albedo(:,:,:,jlev+1), &
+          flux_up_above = mat_x_vec_3_sw(ng,total_albedo(:,:,:,jlev+1), &
                &  flux_dn_above) + total_source(:,:)
         end if
 
@@ -1531,9 +1542,9 @@ end if
           ! Apply downward overlap matrix to compute direct
           ! downwelling flux entering the top of each region in the
           ! layer below
-          flux_dn_below = singlemat_x_vec(ng,ng,nreg,v_matrix(:,:,jlev+1), &
+          flux_dn_below = singlemat_x_vec_sw(ng,v_matrix(:,:,jlev+1), &
                &  flux_dn_above)
-          direct_dn_below = singlemat_x_vec(ng,ng,nreg,v_matrix(:,:,jlev+1), &
+          direct_dn_below = singlemat_x_vec_sw(ng,v_matrix(:,:,jlev+1), &
                &  direct_dn_above)
         end if
 

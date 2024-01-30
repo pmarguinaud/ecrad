@@ -40,12 +40,6 @@ module radiation_matrix
   integer, parameter :: IMatrixPatternDense     = 0
   integer, parameter :: IMatrixPatternShortwave = 1
 
-  public  :: mat_x_vec, singlemat_x_vec, singlemat_x_vec_lw, singlemat_x_vec_sw, &
-       &     mat_x_mat, singlemat_x_mat, mat_x_singlemat, &
-       &     identity_minus_mat_x_mat, solve_vec, solve_mat, expm, &
-       &     fast_expm_exchange_2, fast_expm_exchange_3, &
-       &     sparse_x_dense
-
   private :: solve_vec_2, solve_vec_3, solve_mat_2, &
        &     solve_mat_3, lu_factorization, lu_substitution, solve_mat_n, &
        &     diag_mat_right_divide_3
@@ -117,6 +111,53 @@ contains
 
   end function mat_x_vec
 
+  pure function mat_x_vec_3_lw(ng_lw_in,A,b)
+
+    integer,    intent(in)                       :: ng_lw_in
+    real(jprb), intent(in), dimension(ng_lw,3,3) :: A
+    real(jprb), intent(in), dimension(ng_lw,3)   :: b
+    real(jprb),             dimension(ng_lw,3):: mat_x_vec_3_lw
+
+    integer :: jg
+
+    do jg = 1, ng_lw
+      ! both inner and outer loop of the matrix loops j1 and j2 unrolled
+      ! inner loop:            j2=1               j2=2                  j2=3
+      mat_x_vec_3_lw(jg,1) = A(jg,1,1)*b(jg,1) + A(jg,1,2)*b(jg,2) + A(jg,1,3)*b(jg,3) ! j1=1
+      mat_x_vec_3_lw(jg,2) = A(jg,2,1)*b(jg,1) + A(jg,2,2)*b(jg,2) + A(jg,2,3)*b(jg,3) ! j1=2
+      mat_x_vec_3_lw(jg,3) = A(jg,3,1)*b(jg,1) + A(jg,3,2)*b(jg,2) + A(jg,3,3)*b(jg,3) ! j1=3
+    end do
+
+  end function mat_x_vec_3_lw
+
+  pure function mat_x_vec_3_sw(ng_sw_in,A,b,do_top_left_only_in)
+
+    integer,    intent(in)                        :: ng_sw_in
+    real(jprb), intent(in), dimension(ng_sw,3,3)  :: A
+    real(jprb), intent(in), dimension(ng_sw,3)    :: b
+    real(jprb),             dimension(ng_sw,3)    :: mat_x_vec_3_sw
+    logical,    intent(in), optional              :: do_top_left_only_in
+    logical :: do_top_left_only
+    integer :: jg
+
+    if (present(do_top_left_only_in)) then
+      do_top_left_only = do_top_left_only_in
+    else
+      do_top_left_only = .false.
+    end if
+
+    if (do_top_left_only) then
+      mat_x_vec_3_sw      = 0.0_jprb
+      mat_x_vec_3_sw(:,1) = A(:,1,1)*b(:,1)
+    else
+      do jg = 1, ng_sw
+        ! inner loop:            j2=1               j2=2                  j2=3
+        mat_x_vec_3_sw(jg,1) = A(jg,1,1)*b(jg,1) + A(jg,1,2)*b(jg,2) + A(jg,1,3)*b(jg,3) ! j1=1
+        mat_x_vec_3_sw(jg,2) = A(jg,2,1)*b(jg,1) + A(jg,2,2)*b(jg,2) + A(jg,2,3)*b(jg,3) ! j1=2
+        mat_x_vec_3_sw(jg,3) = A(jg,3,1)*b(jg,1) + A(jg,3,2)*b(jg,2) + A(jg,3,3)*b(jg,3) ! j1=3
+      end do
+    end if
+  end function mat_x_vec_3_sw
 
   !---------------------------------------------------------------------
   ! Treat A as an m-by-m square matrix and b as n m-element vectors
@@ -263,6 +304,35 @@ contains
 
   end function mat_x_mat
 
+  pure subroutine mat_x_mat_3_sw(ng_sw_in,A,B,C)
+
+    integer,    intent(in)                            :: ng_sw_in
+    real(jprb), intent(in),     dimension(ng_sw,3,3)  :: A, B
+    real(jprb), intent(inout),  dimension(ng_sw,3,3)  :: C
+    integer    :: j1, j2!, i,j,k
+
+    do j2 = 1,3
+      do j1 = 1,3
+        C(:,j1,j2) = A(:,j1,1)*B(:,1,j2) + A(:,j1,2)*B(:,2,j2) + A(:,j1,3)*B(:,3,j2)
+      end do
+    end do
+
+  end subroutine mat_x_mat_3_sw
+
+  pure subroutine mat_x_mat_3_lw(ng_lw_in,A,B,C)
+
+    integer,    intent(in)                            :: ng_lw_in
+    real(jprb), intent(in),     dimension(ng_lw,3,3)  :: A, B
+    real(jprb), intent(inout),  dimension(ng_lw,3,3)  :: C
+    integer    :: j1, j2
+
+    do j2 = 1,3
+      do j1 = 1,3
+        C(:,j1,j2) = A(:,j1,1)*B(:,1,j2) + A(:,j1,2)*B(:,2,j2) + A(:,j1,3)*B(:,3,j2)
+      end do
+    end do
+
+  end subroutine mat_x_mat_3_lw
 
   !---------------------------------------------------------------------
   ! Treat A as an m-by-m matrix and B as n m-by-m square matrices
@@ -298,6 +368,25 @@ contains
 
   end function singlemat_x_mat
 
+  pure function singlemat_x_mat_3_sw(ng_sw_in,A,B)
+
+    integer,    intent(in)                        :: ng_sw_in
+    real(jprb), intent(in), dimension(3,3)        :: A
+    real(jprb), intent(in), dimension(ng_sw,3,3)  :: B
+    real(jprb),             dimension(ng_sw,3,3)  :: singlemat_x_mat_3_sw
+
+    integer    :: j2, j3, jg
+
+    ! unroll loops, just one SIMD write per matrix element
+    do j2 = 1,3
+      do jg = 1, ng_sw  ! inner loop:     j3=1                j3=2                j3=3
+        singlemat_x_mat_3_sw(jg,1,j2) = A(1,1)*B(jg,1,j2) + A(1,2)*B(jg,2,j2) + A(1,3)*B(jg,3,j2) ! j1=1
+        singlemat_x_mat_3_sw(jg,2,j2) = A(2,1)*B(jg,1,j2) + A(2,2)*B(jg,2,j2) + A(2,3)*B(jg,3,j2) ! j1=2
+        singlemat_x_mat_3_sw(jg,3,j2) = A(3,1)*B(jg,1,j2) + A(3,2)*B(jg,2,j2) + A(3,3)*B(jg,3,j2) ! j1=3
+      end do
+    end do
+
+  end function singlemat_x_mat_3_sw
 
   !---------------------------------------------------------------------
   ! Treat B as an m-by-m matrix and A as n m-by-m square matrices
@@ -333,6 +422,24 @@ contains
 
   end function mat_x_singlemat
 
+  pure function mat_x_singlemat_3_sw(ng_sw_in, A,B)
+
+    integer,    intent(in)                        :: ng_sw_in
+    real(jprb), intent(in), dimension(ng_sw,3,3)  :: A
+    real(jprb), intent(in), dimension(3,3)        :: B
+
+    real(jprb),             dimension(ng_sw,3,3)  :: mat_x_singlemat_3_sw
+    integer    :: j1, j2, j3, jg
+
+    do j2 = 1,3
+      do jg = 1,ng_sw  ! inner loop:      j3=1                j3=2                j3=3
+        mat_x_singlemat_3_sw(jg,1,j2) = A(jg,1,1)*B(1,j2) + A(jg,1,2)*B(2,j2) +  A(jg,1,3)*B(3,j2) ! j1 = 1
+        mat_x_singlemat_3_sw(jg,2,j2) = A(jg,2,1)*B(1,j2) + A(jg,2,2)*B(2,j2) +  A(jg,2,3)*B(3,j2) ! j1 = 2
+        mat_x_singlemat_3_sw(jg,3,j2) = A(jg,3,1)*B(1,j2) + A(jg,3,2)*B(2,j2) +  A(jg,3,3)*B(3,j2) ! j1 = 3
+      end do
+    end do
+
+  end function mat_x_singlemat_3_sw
 
   !---------------------------------------------------------------------
   ! Compute I-A*B where I is the identity matrix and A & B are n
@@ -367,7 +474,46 @@ contains
 
   end function identity_minus_mat_x_mat
 
+pure subroutine identity_minus_mat_x_mat_3_sw(ng_sw_in,A,B,C)
 
+    integer,    intent(in)                            :: ng_sw_in
+    real(jprb), intent(in),     dimension(ng_sw,3,3)  :: A, B
+    real(jprb), intent(inout),  dimension(ng_sw,3,3)  :: C
+
+    integer    :: j1,j2
+
+    do j2 = 1,3
+      do j1 = 1,3
+        C(:,j1,j2) = A(:,j1,1)*B(:,1,j2) + A(:,j1,2)*B(:,2,j2) + A(:,j1,3)*B(:,3,j2)
+      end do
+    end do
+
+    C = - C
+    do j1 = 1,3
+      C(:,j1,j1) = 1.0_jprb + C(:,j1,j1)
+    end do
+
+  end subroutine identity_minus_mat_x_mat_3_sw
+
+  subroutine identity_minus_mat_x_mat_3_lw(ng_lw_in,A,B,C)
+
+    integer,    intent(in)                            :: ng_lw_in
+    real(jprb), intent(in),     dimension(ng_lw,3,3)  :: A, B
+    real(jprb), intent(inout),  dimension(ng_lw,3,3)  :: C
+    integer    :: j1,j2
+
+    do j2 = 1,3
+      do j1 = 1,3
+        C(:,j1,j2) = A(:,j1,1)*B(:,1,j2) + A(:,j1,2)*B(:,2,j2) + A(:,j1,3)*B(:,3,j2)
+      end do
+    end do
+
+    C = - C
+    do j1 = 1,3
+      C(:,j1,j1) = 1.0_jprb + C(:,j1,j1)
+    end do
+
+  end subroutine identity_minus_mat_x_mat_3_lw
 
   !---------------------------------------------------------------------
   ! Replacement for matmul in the case that the first matrix is sparse
@@ -568,6 +714,105 @@ contains
 
   end subroutine solve_vec_3
 
+  pure function solve_vec_3_sw(ng_sw_in,A,b)
+    integer,    intent(in)  :: ng_sw_in
+    real(jprb), intent(in)  :: A(ng_sw,3,3)
+    real(jprb), intent(in)  :: b(ng_sw,3)
+    real(jprb) :: solve_vec_3_sw(ng_sw,3)
+
+    real(jprb), dimension(ng_sw) :: L21, L31, L32
+    real(jprb), dimension(ng_sw) :: U22, U23, U33
+    real(jprb), dimension(ng_sw) :: y2, y3
+
+    ! LU decomposition:
+    !     ( 1        )   (U11 U12 U13)
+    ! A = (L21  1    ) * (    U22 U23)
+    !     (L31 L32  1)   (        U33)
+    L21 = A(:,2,1) / A(:,1,1)
+    L31 = A(:,3,1) / A(:,1,1)
+    U22 = A(:,2,2) - L21*A(:,1,2)
+    U23 = A(:,2,3) - L21*A(:,1,3)
+    L32 =(A(:,3,2) - L31*A(:,1,2)) / U22
+    U33 = A(:,3,3) - L31*A(:,1,3) - L32*U23
+
+    ! Solve Ly = b by forward substitution
+    y2 = b(:,2) - L21*b(:,1)
+    y3 = b(:,3) - L31*b(:,1) - L32*y2
+
+    ! Solve Ux = y by back substitution
+    solve_vec_3_sw(:,3) = y3/U33
+    solve_vec_3_sw(:,2) = (y2 - U23*solve_vec_3_sw(:,3)) / U22
+    solve_vec_3_sw(:,1) = (b(:,1) - A(:,1,2)*solve_vec_3_sw(:,2) &
+         &         - A(:,1,3)*solve_vec_3_sw(:,3)) / A(:,1,1)
+
+  end function solve_vec_3_sw
+
+  ! Like solve_vec_3 but overwrite b with x
+  pure subroutine solve_vec_3_lw_inplace(ng_lw_in,A,b)
+    integer,    intent(in)  :: ng_lw_in
+    real(jprb), intent(in)  :: A(ng_lw,3,3)
+    real(jprb), intent(inout)  :: b(ng_lw,3)
+    !real(jprb), intent(out) :: x(:,:)
+
+    real(jprb), dimension(ng_lw) :: L21, L31, L32
+    real(jprb), dimension(ng_lw) :: U22, U23, U33
+    real(jprb), dimension(ng_lw) :: y2, y3
+
+    ! LU decomposition:
+    !     ( 1        )   (U11 U12 U13)
+    ! A = (L21  1    ) * (    U22 U23)
+    !     (L31 L32  1)   (        U33)
+    L21 = A(:,2,1) / A(:,1,1)
+    L31 = A(:,3,1) / A(:,1,1)
+    U22 = A(:,2,2) - L21*A(:,1,2)
+    U23 = A(:,2,3) - L21*A(:,1,3)
+    L32 =(A(:,3,2) - L31*A(:,1,2)) / U22
+    U33 = A(:,3,3) - L31*A(:,1,3) - L32*U23
+
+    ! Solve Ly = b by forward substitution
+    y2 = b(:,2) - L21*b(:,1)
+    y3 = b(:,3) - L31*b(:,1) - L32*y2
+
+    ! Solve Ux = y by back substitution
+    b(:,3) = y3/U33
+    b(:,2) = (y2 - U23*b(:,3)) / U22
+    b(:,1) = (b(:,1) - A(:,1,2)*b(:,2) &
+         &         - A(:,1,3)*b(:,3)) / A(:,1,1)
+
+  end subroutine solve_vec_3_lw_inplace
+
+  pure function solve_vec_3_lw(ng_lw_in,A,b)
+    integer,    intent(in)  :: ng_lw_in
+    real(jprb), intent(in)  :: A(ng_lw,3,3)
+    real(jprb), intent(in)  :: b(ng_lw,3)
+    real(jprb) :: solve_vec_3_lw(ng_lw,3)
+
+    real(jprb), dimension(ng_lw) :: L21, L31, L32
+    real(jprb), dimension(ng_lw) :: U22, U23, U33
+    real(jprb), dimension(ng_lw) :: y2, y3
+
+    ! LU decomposition:
+    !     ( 1        )   (U11 U12 U13)
+    ! A = (L21  1    ) * (    U22 U23)
+    !     (L31 L32  1)   (        U33)
+    L21 = A(:,2,1) / A(:,1,1)
+    L31 = A(:,3,1) / A(:,1,1)
+    U22 = A(:,2,2) - L21*A(:,1,2)
+    U23 = A(:,2,3) - L21*A(:,1,3)
+    L32 =(A(:,3,2) - L31*A(:,1,2)) / U22
+    U33 = A(:,3,3) - L31*A(:,1,3) - L32*U23
+
+    ! Solve Ly = b by forward substitution
+    y2 = b(:,2) - L21*b(:,1)
+    y3 = b(:,3) - L31*b(:,1) - L32*y2
+
+    ! Solve Ux = y by back substitution
+    solve_vec_3_lw(:,3) = y3/U33
+    solve_vec_3_lw(:,2) = (y2 - U23*solve_vec_3_lw(:,3)) / U22
+    solve_vec_3_lw(:,1) = (b(:,1) - A(:,1,2)*solve_vec_3_lw(:,2) &
+         &         - A(:,1,3)*solve_vec_3_lw(:,3)) / A(:,1,1)
+
+  end function solve_vec_3_lw
 
   !---------------------------------------------------------------------
   ! Solve AX=B optimized for 3x3 matrices, using LU factorization and
@@ -776,6 +1021,84 @@ contains
 
   end subroutine solve_mat_n
 
+  pure subroutine solve_mat_3_sw(ng_sw_in,A,B,X)
+    integer,    intent(in)  :: ng_sw_in
+    real(jprb), intent(in)  :: A(ng_sw,3,3)
+    real(jprb), intent(in)  :: B(ng_sw,3,3)
+    real(jprb), intent(out) :: X(ng_sw,3,3)
+
+    real(jprb), dimension(ng_sw) :: L21, L31, L32
+    real(jprb), dimension(ng_sw) :: U22, U23, U33
+    real(jprb), dimension(ng_sw) :: one_over_A11
+    real(jprb) :: y2, y3
+    integer :: j, jg
+
+    ! LU decomposition:
+    !     ( 1        )   (U11 U12 U13)
+    ! A = (L21  1    ) * (    U22 U23)
+    !     (L31 L32  1)   (        U33)
+    do jg = 1, ng_sw
+      one_over_A11(jg) = 1 / A(jg,1,1)
+      L21(jg) = A(jg,2,1) * one_over_A11(jg) !/ A(jg,1,1)
+      L31(jg) = A(jg,3,1) * one_over_A11(jg) !/ A(jg,1,1)
+      U22(jg) = A(jg,2,2) - L21(jg)*A(jg,1,2)
+      U23(jg) = A(jg,2,3) - L21(jg)*A(jg,1,3)
+      L32(jg) =(A(jg,3,2) - L31(jg)*A(jg,1,2)) / U22(jg)
+      U33(jg) = A(jg,3,3) - L31(jg)*A(jg,1,3) - L32(jg)*U23(jg)
+    end do
+    do j = 1,3
+      do jg = 1, ng_sw
+        ! Solve Ly = B(:,:,j) by forward substitution
+        ! y1 = B(jg,1,j)
+        y2 = B(jg,2,j) - L21(jg)*B(jg,1,j)
+        y3 = B(jg,3,j) - L31(jg)*B(jg,1,j) - L32(jg)*y2
+        ! Solve UX(:,:,j) = y by back substitution
+        X(jg,3,j) = y3 / U33(jg)
+        X(jg,2,j) = (y2 - U23(jg)*X(jg,3,j)) / U22(jg)
+        X(jg,1,j) = (B(jg,1,j) - A(jg,1,2)*X(jg,2,j) &
+            &          - A(jg,1,3)*X(jg,3,j)) * one_over_A11(jg) !/ A(:,1,1)
+      end do
+    end do
+
+  end subroutine solve_mat_3_sw
+
+  pure subroutine solve_mat_3_lw(ng_lw_in,A,B,X)
+    integer,    intent(in)  :: ng_lw_in
+    real(jprb), intent(in)  :: A(ng_lw,3,3)
+    real(jprb), intent(in)  :: B(ng_lw,3,3)
+    real(jprb), intent(out) :: X(ng_lw,3,3)
+
+    real(jprb), dimension(ng_lw) :: L21, L31, L32
+    real(jprb), dimension(ng_lw) :: U22, U23, U33
+    real(jprb), dimension(ng_lw) :: y2, y3, one_over_A11
+
+    integer :: j
+
+    ! LU decomposition:
+    !     ( 1        )   (U11 U12 U13)
+    ! A = (L21  1    ) * (    U22 U23)
+    !     (L31 L32  1)   (        U33)
+    one_over_A11 = 1 / A(:,1,1)
+    L21 = A(:,2,1) * one_over_A11 !/ A(:,1,1)
+    L31 = A(:,3,1) * one_over_A11 !/ A(:,1,1)
+    U22 = A(:,2,2) - L21*A(:,1,2)
+    U23 = A(:,2,3) - L21*A(:,1,3)
+    L32 =(A(:,3,2) - L31*A(:,1,2)) / U22
+    U33 = A(:,3,3) - L31*A(:,1,3) - L32*U23
+
+    do j = 1,3
+      ! Solve Ly = B(:,:,j) by forward substitution
+      ! y1 = B(:,1,j)
+      y2 = B(:,2,j) - L21*B(:,1,j)
+      y3 = B(:,3,j) - L31*B(:,1,j) - L32*y2
+      ! Solve UX(:,:,j) = y by back substitution
+      X(:,3,j) = y3 / U33
+      X(:,2,j) = (y2 - U23*X(:,3,j)) / U22
+      X(:,1,j) = (B(:,1,j) - A(:,1,2)*X(:,2,j) &
+           &          - A(:,1,3)*X(:,3,j)) * one_over_A11 !/ A(:,1,1)
+    end do
+
+  end subroutine solve_mat_3_lw
 
   !---------------------------------------------------------------------
   ! Solve Ax=b, where A consists of n m-by-m matrices and x and b
