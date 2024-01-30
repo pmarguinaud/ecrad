@@ -620,6 +620,43 @@ pure subroutine identity_minus_mat_x_mat_3_sw(ng_sw_in,A,B,C)
 
   end function repeated_square
 
+  pure subroutine repeated_square_sw_9(nrepeat,A,B)
+    integer,    intent(in)            :: nrepeat
+    real(jprb), intent(inout)         :: A(9,9)
+    real(jprb), intent(out)           :: B(9,9)
+
+    integer :: j1, j2, j3
+
+    do j3 = 1,nrepeat
+        B = 0.0_jprb
+        ! Do the top-left (C, D, F & G)
+        do j2 = 1,6
+          do j1 = 1,6
+            B(j1,j2) = A(j1,1)*A(1,j2) + A(j1,2)*A(2,j2) &
+            &          + A(j1,3)*A(3,j2) + A(j1,4)*A(4,j2) &
+            &          + A(j1,5)*A(5,j2) + A(j1,6)*A(6,j2)
+          end do
+        end do
+        do j2 = 7,9
+          ! Do the top-right (E & H)
+          do j1 =  1,6
+            B(j1,j2) = A(j1,1)*A(1,j2) + A(j1,2)*A(2,j2) &
+              &       + A(j1,3)*A(3,j2) + A(j1,4)*A(4,j2) + A(j1,5)*A(5,j2) &
+              &       + A(j1,6)*A(6,j2) + A(j1,7)*A(7,j2) + A(j1,8)*A(8,j2) &
+              &       + A(j1,9)*A(9,j2)
+          end do
+          ! Do the bottom-right (I)
+          do j1 = 7,9
+            B(j1,j2) =  A(j1,7)*A(7,j2) + A(j1,8)*A(8,j2) + A(j1,9)*A(9,j2)
+          end do
+        end do
+
+        if (j3 < nrepeat) then
+            A = B
+        end if
+    end do
+  end subroutine repeated_square_sw_9
+
 
   ! --- SOLVE LINEAR EQUATIONS ---
 
@@ -1146,7 +1183,7 @@ pure subroutine identity_minus_mat_x_mat_3_sw(ng_sw_in,A,B,C)
     real(jprb), intent(in)  :: B(:,:,:)
 
     real(jprb)              :: solve_mat(iend,m,m)
-    real(jphook) :: hook_handle
+    real(jphook)            :: hook_handle
 
     if (lhook) call dr_hook('radiation_matrix:solve_mat',0,hook_handle)
 
@@ -1162,6 +1199,256 @@ pure subroutine identity_minus_mat_x_mat_3_sw(ng_sw_in,A,B,C)
 
   end function solve_mat
 
+  pure subroutine mat_square_sw(ng_sw_in,nlev_b,A,C)
+    ! Square 9x9 matrices, assuming SW pattern with sparsity
+    !     (C D E)
+    ! A = (F G H)
+    !     (0 0 I)
+    integer,    intent(in)                                :: ng_sw_in, nlev_b
+    real(jprb), intent(in),  dimension(ng_sw*nlev_b,9,9)  :: A
+    !dir$ assume_aligned A:64
+    real(jprb), intent(out), dimension(ng_sw*nlev_b,9,9)  :: C
+    !dir$ assume_aligned C:64
+    integer    :: j1, j2, j3
+
+    ! Do the top-left (C, D, F, G)
+    do j2 = 1,6
+      do j1 = 1,6
+        ! do j3 = 1,6
+        !   C(:,j1,j2) = C(:,j1,j2) + A(:,j1,j3)*A(:,j3,j2)
+        ! end do
+        ! flatten last loop, only one write SIMD instruction
+        C(:,j1,j2) = A(:,j1,1)*A(:,1,j2) + A(:,j1,2)*A(:,2,j2) &
+        &          + A(:,j1,3)*A(:,3,j2) + A(:,j1,4)*A(:,4,j2) &
+        &          + A(:,j1,5)*A(:,5,j2) + A(:,j1,6)*A(:,6,j2)
+        ! C(:,j1,j2) = sum(A(:,j1,1:6)*A(:,1:6,j2),2)
+      end do
+    end do
+
+    do j2 = 7,9
+      C(:,:,j2) = 0.0_jprb
+      ! Do the top-right (E & H)
+      do j1 =  1,6
+        do j3 = 1,9
+          C(:,j1,j2) = C(:,j1,j2) + A(:,j1,j3)*A(:,j3,j2)
+        end do
+      end do
+
+      ! Do the bottom-right (I)
+      do j1 = 7,9
+        do j3 = 7,9
+          C(:,j1,j2) =  C(:,j1,j2) + A(:,j1,j3)*A(:,j3,j2)
+        end do
+      end do
+    end do
+
+  end subroutine mat_square_sw
+
+  pure subroutine mat_x_mat_sw(ng_sw_in,nlev_b,A,B,C)
+
+    integer,    intent(in)                    :: ng_sw_in, nlev_b
+    real(jprb), intent(in), dimension(ng_sw*nlev_b,9,9) :: A, B
+    !dir$ assume_aligned A:64,B:64
+    real(jprb), intent(out),dimension(ng_sw*nlev_b,9,9) :: C
+    !dir$ assume_aligned C:64
+    integer    :: j1, j2, j3
+    !     (C    D    E)
+    ! A = (F=   G    H)
+    !     (0    0    I)
+
+    ! Do the top-left (C, D, F, G)
+    do j2 = 1,6
+      do j1 = 1,6
+        C(:,j1,j2) =  A(:,j1,1)*B(:,1,j2) + A(:,j1,2)*B(:,2,j2) + A(:,j1,3)*B(:,3,j2) &
+             &      + A(:,j1,4)*B(:,4,j2) + A(:,j1,5)*B(:,5,j2) + A(:,j1,6)*B(:,6,j2)
+      end do
+    end do
+    do j2 = 7,9
+      ! Do the top-right (E & H)
+      do j1 = 1,6
+        C(:,j1,j2) =  A(:,j1,1)*B(:,1,j2) + A(:,j1,2)*B(:,2,j2) + A(:,j1,3)*B(:,3,j2) &
+             &      + A(:,j1,4)*B(:,4,j2) + A(:,j1,5)*B(:,5,j2) + A(:,j1,6)*B(:,6,j2) &
+             &      + A(:,j1,7)*B(:,7,j2) + A(:,j1,8)*B(:,8,j2) + A(:,j1,9)*B(:,9,j2)
+      end do
+      ! Do the bottom-right (I)
+      do j1 = 7,9
+        C(:,j1,j2) = A(:,j1,7)*B(:,7,j2) + A(:,j1,8)*B(:,8,j2) + A(:,j1,9)*B(:,9,j2)
+      end do
+    end do
+    ! Lower left corner with zeros
+    C(:,7:9,1:6) = 0.0_jprb
+
+  end subroutine mat_x_mat_sw
+
+  pure subroutine mat_x_mat_sw_repeats(ng_sw_in, nlev_b, A, B, C)
+    integer,    intent(in)                              :: ng_sw_in, nlev_b
+    real(jprb), intent(in), dimension(ng_sw*nlev_b,9,9) :: A, B
+    !dir$ assume_aligned A:64,B:64
+    real(jprb), intent(out),dimension(ng_sw*nlev_b,9,9) :: C
+    !dir$ assume_aligned C:64
+    integer    :: j1, j2, j22
+    ! Input matrices have pattern
+    !     (C    D     E)
+    ! A = (F=-D G=-C  H)
+    !     (0    0     I)
+    ! As a result, output matrices has pattern
+    !     (C    D    E)
+    ! C = (F=D  G=C  H)
+    !     (0    0    I)
+    do j2 = 1,3
+      j22 = j2 + 6
+      do j1 = 1,6
+        ! Do the top-left (C, F)
+        C(:,j1,j2) = A(:,j1,1)*B(:,1,j2) + A(:,j1,2)*B(:,2,j2) + A(:,j1,3)*B(:,3,j2) &
+        &          + A(:,j1,4)*B(:,4,j2) + A(:,j1,6)*B(:,6,j2)
+        ! Do the top-right (E & H)
+        C(:,j1,j22) = A(:,j1,1)*B(:,1,j22) + A(:,j1,2)*B(:,2,j22) + A(:,j1,3)*B(:,3,j22) &
+        &      + A(:,j1,4)*B(:,4,j22) + A(:,j1,5)*B(:,5,j22) + A(:,j1,6)*B(:,6,j22) &
+        &      + A(:,j1,7)*B(:,7,j22) + A(:,j1,8)*B(:,8,j22) + A(:,j1,9)*B(:,9,j22)
+      end do
+      do j1 = 7,9  ! Do the bottom-right (I)
+        C(:,j1,j22) = A(:,j1,7)*B(:,7,j22) + A(:,j1,8)*B(:,8,j22) + A(:,j1,9)*B(:,9,j22)
+      end do
+    end do
+    C(:,1:3,4:6) = C(:,4:6,1:3) ! D = F
+    C(:,4:6,4:6) = C(:,1:3,1:3) ! G = C
+    C(:,7:9,1:6) = 0.0_jprb     ! Lower left corner
+
+  end subroutine mat_x_mat_sw_repeats
+
+  !---------------------------------------------------------------------
+  ! Solve AX=B, where A, X and B consist of ng m-by-m matrices
+  ! Overwrite B with X. A is corrupted
+  pure subroutine solve_mat_sw(ng_sw_in,nlev_b,A,B)
+    integer,    intent(in)    :: ng_sw_in, nlev_b
+    real(jprb), intent(inout) :: A(ng_sw*nlev_b,9,9) ! A=LU is corrupted
+    !dir$ assume_aligned A:64
+    real(jprb), intent(inout) :: B(ng_sw*nlev_b,9,9) ! X = B, both input and output
+    !dir$ assume_aligned B:64
+    ! Local variables
+    integer :: j1, j2, j3
+    integer, parameter :: m = 9
+    integer, parameter :: mblock = 3  ! m/3
+    integer, parameter :: m2block = 6 ! 2*mblock
+    real(jprb) :: diagdiv(ng_sw*nlev_b,9)
+    !     (C   D  E)
+    ! A = (-D -C  H)
+    !     (0   0  I)
+
+    ! factorization of A into LU
+    ! First do columns 1-6, for which only rows 1-6 have non-negative entries
+    do j2 = 1, m2block
+      do j1 = 1, j2-1
+        do j3 = 1, j1-1
+          A(:,j1,j2) = A(:,j1,j2)- A(:,j1,j3) * A(:,j3,j2)
+        end do
+      end do
+      do j1 = j2, m2block
+        do j3 = 1, j2-1
+          A(:,j1,j2) = A(:,j1,j2) - A(:,j1,j3) * A(:,j3,j2)
+        end do
+      end do
+      ! s = 1.0_jprb / A(:,j2,j2)
+      diagdiv(:,j2) =  1.0_jprb / A(:,j2,j2)
+      do j1 = j2+1, m2block
+        A(:,j1,j2) = A(:,j1,j2) * diagdiv(:,j2) ! * s
+      end do
+    end do
+    ! Remaining columns
+    do j2 = m2block+1, m
+      do j1 = 1, j2-1
+        do j3 = 1, j1-1
+          A(:,j1,j2) = A(:,j1,j2) - A(:,j1,j3) * A(:,j3,j2)
+        end do
+      end do
+      do j1 = j2, m
+        do j3 = 1, j2-1
+          A(:,j1,j2)= A(:,j1,j2) - A(:,j1,j3) * A(:,j3,j2)
+        end do
+      end do
+      diagdiv(:,j2) =  1.0_jprb / A(:,j2,j2)
+      if (j2 /= m) then
+        ! s = 1.0_jprb / A(:,j2,j2)
+        do j1 = j2+1, m
+          A(:,j1,j2) = A(:,j1,j2) * diagdiv(:,j2) ! * s
+        end do
+      end if
+    end do
+    !---------------------------------------------------------------------
+    ! Treat LU as an LU-factorization of an original matrix A, and
+    ! return x where Ax=b. LU consists of n m-by-m matrices and b as n
+    ! m-element vectors.
+    ! Here B is both input b and output x, and A has been LU factorized, combining L and U
+    ! into one matrix where the diagonal is the diagonal of U (L has ones in the diagonal)
+
+    ! A and B both have following structure:
+    !     (C   D  E)
+    !     (F   G  H)
+    !     (0   0  I)
+    ! Separate j3 (columns) into two regions to avoid redundant operations with zero
+    do j3 = 1,m2block ! in this region B(:,7:9),A(:,7:9) are 0
+      ! First solve Ly=b
+      ! do j2 = 2, m2block
+      !   do j1 = 1, j2-1
+      !     B(:,j2,j3) = B(:,j2,j3) - B(:,j1,j3)*A(:,j2,j1)
+      !   end do
+      !   ! No division because diagonal of L is unity
+      ! end do
+      B(:,2,j3) = B(:,2,j3) - B(:,1,j3)*A(:,2,1)
+      B(:,3,j3) = B(:,3,j3) - B(:,1,j3)*A(:,3,1) - B(:,2,j3)*A(:,3,2)
+      B(:,4,j3) = B(:,4,j3) - B(:,1,j3)*A(:,4,1) - B(:,2,j3)*A(:,4,2) - B(:,3,j3)*A(:,4,3)
+      B(:,5,j3) = B(:,5,j3) - B(:,1,j3)*A(:,5,1) - B(:,2,j3)*A(:,5,2) - B(:,3,j3)*A(:,5,3) - B(:,4,j3)*A(:,5,4)
+      B(:,6,j3) = B(:,6,j3) - B(:,1,j3)*A(:,6,1) - B(:,2,j3)*A(:,6,2) - B(:,3,j3)*A(:,6,3) &
+        & - B(:,4,j3)*A(:,6,4) - B(:,5,j3)*A(:,6,5)
+      ! Now solve Ux=y
+      ! do j2 = m2block, 1, -1
+      !   do j1 = j2+1, m2block
+      !     B(:,j2,j3) = ( B(:,j2,j3) - B(:,j1,j3)*A(:,j2,j1) )
+      !   end do
+      !   B(:,j2,j3) = B(:,j2,j3) * diagdiv(:,j2) ! / A(:,j2,j2) ! Divide by diagonal of A=U
+      ! end do
+      B(:,6,j3) = B(:,6,j3) * diagdiv(:,6)
+      B(:,5,j3) = B(:,5,j3) - B(:,6,j3)*A(:,5,6)
+      B(:,5,j3) = B(:,5,j3) * diagdiv(:,5)
+      B(:,4,j3) = B(:,4,j3) - B(:,5,j3)*A(:,4,5) - B(:,6,j3)*A(:,4,6)
+      B(:,4,j3) = B(:,4,j3) * diagdiv(:,4)
+      B(:,3,j3) = B(:,3,j3) - B(:,4,j3)*A(:,3,4) - B(:,5,j3)*A(:,3,5) - B(:,6,j3)*A(:,3,6)
+      B(:,3,j3) = B(:,3,j3) * diagdiv(:,3)
+      B(:,2,j3) = B(:,2,j3) - B(:,3,j3)*A(:,2,3) - B(:,4,j3)*A(:,2,4) - B(:,5,j3)*A(:,2,5) - B(:,6,j3)*A(:,2,6)
+      B(:,2,j3) = B(:,2,j3) * diagdiv(:,2)
+      B(:,1,j3) = B(:,1,j3) - B(:,2,j3)*A(:,1,2) - B(:,3,j3)*A(:,1,3) - B(:,4,j3)*A(:,1,4) &
+        & - B(:,5,j3)*A(:,1,5) - B(:,6,j3)*A(:,1,6)
+      B(:,1,j3) = B(:,1,j3) * diagdiv(:,1)
+    end do
+
+    do j3 = m2block+1,m ! columns 7-9: here B has nonzero values for all rows, but A doesn't
+      ! First solve Ly=b
+      ! do j2 = 2, m2block
+      !   do j1 = 1, j2-1
+      !     B(:,j2,j3) = B(:,j2,j3) - B(:,j1,j3)*A(:,j2,j1)
+      !   end do
+      !   ! No division because diagonal of L is unity
+      ! end do
+      B(:,2,j3) = B(:,2,j3) - B(:,1,j3)*A(:,2,1)
+      B(:,3,j3) = B(:,3,j3) - B(:,1,j3)*A(:,3,1) - B(:,2,j3)*A(:,3,2)
+      B(:,4,j3) = B(:,4,j3) - B(:,1,j3)*A(:,4,1) - B(:,2,j3)*A(:,4,2) - B(:,3,j3)*A(:,4,3)
+      B(:,5,j3) = B(:,5,j3) - B(:,1,j3)*A(:,5,1) - B(:,2,j3)*A(:,5,2) - B(:,3,j3)*A(:,5,3) - B(:,4,j3)*A(:,5,4)
+      B(:,6,j3) = B(:,6,j3) - B(:,1,j3)*A(:,6,1) - B(:,2,j3)*A(:,6,2) - B(:,3,j3)*A(:,6,3) &
+        & - B(:,4,j3)*A(:,6,4) - B(:,5,j3)*A(:,6,5)
+      ! When j2 = 7, the A terms are all 0, because A(7,1:6)=0
+      ! when j2 = 8, only the last j1 has nonzero A
+      ! When j2 = 9, two last j1 are nonzero
+      B(:,8,j3) = B(:,8,j3) - B(:,7,j3)*A(:,8,7)   ! j2 = 8
+      B(:,9,j3) = B(:,9,j3) - B(:,8,j3)*A(:,9,8) - B(:,7,j3)*A(:,9,7) ! j2 = 9
+      ! Now solve Ux=y
+      do j2 = m, 1, -1
+        do j1 = j2+1, m
+          B(:,j2,j3) = B(:,j2,j3) - B(:,j1,j3)*A(:,j2,j1)
+        end do
+        B(:,j2,j3) = B(:,j2,j3) * diagdiv(:,j2) ! / A(:,j2,j2) ! Divide by diagonal of A=U
+      end do
+    end do
+  end subroutine solve_mat_sw
 
   ! --- MATRIX EXPONENTIATION ---
 
@@ -1273,6 +1560,188 @@ pure subroutine identity_minus_mat_x_mat_3_sw(ng_sw_in,A,B,C)
 
   end subroutine expm
 
+  !---------------------------------------------------------------------
+  ! Like expm, but optimized for the shortwave, which has
+  ! a special matrix structure with zeros and repeated elements.
+  ! Further assumes nreg = 3  =>  m = 9, and computations are done for all
+  ! N elements, where N (the inner dimension) is the number of individual matrices
+  ! For performance reasons, N is increased by batching several cloudy layers in the
+  ! higher level code: N = nlev_b*ng_sw, where ng_sw is the number of g-points and nlev_b
+  ! is the number of batched layers (this is capped at 6 for ecCKD, i.e. nlev_b=1..6)
+  subroutine expm_sw(N,ng_sw_in,nlev_b,A)
+
+    use yomhook, only : lhook, dr_hook, jphook
+
+    integer,    intent(in)      :: N, ng_sw_in, nlev_b
+    real(jprb), intent(inout)   :: A(ng_sw*nlev_b,9,9)
+    !dir$ assume_aligned A:64
+    real(jprb), parameter :: theta(3) = (/4.258730016922831e-01_jprb, &
+         &                                1.880152677804762e+00_jprb, &
+         &                                3.925724783138660e+00_jprb/)
+    real(jprb), parameter :: c(8) = (/17297280.0_jprb, 8648640.0_jprb, &
+         &                1995840.0_jprb, 277200.0_jprb, 25200.0_jprb, &
+         &                1512.0_jprb, 56.0_jprb, 1.0_jprb/)
+    real(jprb), dimension(ng_sw*nlev_b,9,9) :: A2, A4, A6
+    real(jprb), dimension(ng_sw*nlev_b,9,9) :: V
+    real(jprb), dimension(9,9)    :: temp_in, temp_out
+    real(jprb), dimension(ng_sw*nlev_b) :: normA, sum_column
+    integer    :: j1, j2, j3, jg, minexpo, nrepeat, jS, jE
+    integer    :: expo(ng_sw*nlev_b)
+    real(jphook) :: hook_handle
+
+    if (lhook) call dr_hook('radiation_matrix:expm_sw',0,hook_handle)
+
+    ! Compute the 1-norms of A
+    normA = 0.0_jprb
+    do j3 = 1,9
+      sum_column(:) = 0.0_jprb
+      do j2 = 1,9
+        do j1 = 1,N
+          sum_column(j1) = sum_column(j1) + abs(A(j1,j2,j3))
+        end do
+      end do
+      normA = max(normA,sum_column)
+    end do
+
+    associate(frac=>normA, scaling=>normA, normdiv=>sum_column, V2=>A6, U=>A2)
+
+      normdiv = normA/theta(3)
+      frac = fraction(normdiv)
+      expo = exponent(normdiv)
+      where (frac == 0.5_jprb)
+        expo = expo - 1
+      end where
+      expo = max(expo,0)
+      minexpo = minval(expo)
+
+      ! Scale the input matrices by a power of 2
+      scaling = 2.0_jprb**(-expo)
+      do j3 = 1,9
+        do j2 = 1,9
+          if (.not.((j2>6) .and. (j3<7))) then
+            A(:,j2,j3) = A(:,j2,j3) * scaling
+          end if
+        end do
+      end do
+
+      ! Pade approximant of degree 7
+      ! Input and output matrices have zeroes in the lower left corner AND repeated elements
+      ! call mat_square_sw_repeats(N,A,A2)
+      ! call mat_square_sw_repeats(N,A2,A4)
+      ! call mat_x_mat_sw_repeats(N,A2,A4,A6)
+      call mat_x_mat_sw_repeats(ng_sw,nlev_b,A,A,A2)
+      call mat_x_mat_sw_repeats(ng_sw,nlev_b,A2,A2,A4)
+      call mat_x_mat_sw_repeats(ng_sw,nlev_b,A2,A4,A6)
+
+      do j3 = 1,9
+        do j2 = 1,9
+          if (.not.((j2>6) .and. (j3<7))) then
+            V(:,j2,j3)  = c(8)*A6(:,j2,j3) + c(6)*A4(:,j2,j3) + c(4)*A2(:,j2,j3)
+            V2(:,j2,j3) = c(7)*A6(:,j2,j3) + c(5)*A4(:,j2,j3) + c(3)*A2(:,j2,j3)
+          end if
+        end do
+        ! Add a multiple of the identity matrix
+        V(:,j3,j3)  = V(:,j3,j3)  + c(2)
+        V2(:,j3,j3) = V2(:,j3,j3) + c(1)
+      end do
+
+      ! call mat_x_mat_sw(N,A,V,U) ! matrices have zeroes in the lower left corner, but no repeats
+      call mat_x_mat_sw(ng_sw,nlev_b,A,V,U) ! matrices have zeroes in the lower left corner, but no repeats
+
+      do j3 = 1,9
+        do j2 = 1,9
+          if (.not.((j2>6) .and. (j3<7))) then
+            V2(:,j2,j3) = V2(:,j2,j3) - U(:,j2,j3)
+            A(:,j2,j3)  = 2.0_jprb*U(:,j2,j3)
+          end if
+        end do
+      end do
+
+      call solve_mat_sw(ng_sw,nlev_b,V2,A)
+
+    end associate
+
+    ! Add the identity matrix
+    do j3 = 1,9
+      A(:,j3,j3) = A(:,j3,j3) + 1.0_jprb
+    end do
+
+    ! Loop through the matrices
+    ! Improve efficiency by squaring all matrices with the minimum expo first
+    do j1 = 1,minexpo
+      call mat_square_sw(ng_sw,nlev_b,A,V) ! Matrices have zeroes in the corner but no repeated elements
+      A = V
+    end do
+
+    expo = expo - minexpo
+
+    ! Now square individual matrices as needed, depending on the expo of that matrix
+    ! if (any(expo>0)) then
+    !   do jg = 1,ng
+    !     if (expo(jg) > 0) then
+    !       ! print *, "jg ", jg, "/", ng, " expo", expo(jg)
+    !       nrepeat = expo(jg)
+    !       !Square matrix nrepeat times
+    !       temp_in =  A(jg,:,:)
+    !       call repeated_square_sw_9(nrepeat,temp_in,temp_out)
+    !       A(jg,:,:) = temp_out
+    !     end if
+    !   end do
+    ! end if
+
+    ! Improve efficiency by squaring a group of matrices, based on array indexing
+    ! consecutive matrices (in first dimension of A) that still need to be squared
+    do while (any(expo>0))
+      ! Find consecutive indices that should be squared
+      jS=0; jE=0
+      do jg = 1,N
+        if (expo(jg)>0 .and. jS==0) jS = jg
+        if (jS/=0 .and. expo(jg)<=0) then
+            jE = jg-1
+            exit
+        end if
+      end do
+      if (jg==N+1) jE=N
+
+      if((jE-jS+1)<12) then ! not enough small matrices to make array operations worth it
+        do jg = jS,jE
+          nrepeat = expo(jg)
+          !Square individual matrix nrepeat times
+          temp_in =  A(jg,:,:)
+          call repeated_square_sw_9(nrepeat,temp_in,temp_out)
+          A(jg,:,:) = temp_out
+          expo(jg) = expo(jg)-nrepeat
+        end do
+      else ! Square group of matrices
+        do j2 = 1,6
+          do j1 = 1,6
+            V(jS:jE,j1,j2) = A(jS:jE,j1,1)*A(jS:jE,1,j2) + A(jS:jE,j1,2)*A(jS:jE,2,j2) &
+                &          + A(jS:jE,j1,3)*A(jS:jE,3,j2) + A(jS:jE,j1,4)*A(jS:jE,4,j2) &
+                &          + A(jS:jE,j1,5)*A(jS:jE,5,j2) + A(jS:jE,j1,6)*A(jS:jE,6,j2)
+          end do
+        end do
+        do j2 = 7,9
+          ! Do the top-right (E & H)
+          do j1 =  1,6
+            V(jS:jE,j1,j2) = A(jS:jE,j1,1)*A(jS:jE,1,j2) + A(jS:jE,j1,2)*A(jS:jE,2,j2) &
+            &   + A(jS:jE,j1,3)*A(jS:jE,3,j2) + A(jS:jE,j1,4)*A(jS:jE,4,j2) + A(jS:jE,j1,5)*A(jS:jE,5,j2) &
+            &   + A(jS:jE,j1,6)*A(jS:jE,6,j2) + A(jS:jE,j1,7)*A(jS:jE,7,j2) + A(jS:jE,j1,8)*A(jS:jE,8,j2) &
+            &   + A(jS:jE,j1,9)*A(jS:jE,9,j2)
+          end do
+          ! Do the bottom-right (I)
+          do j1 = 7,9
+            V(jS:jE,j1,j2) =  A(jS:jE,j1,7)*A(jS:jE,7,j2) &
+                &           + A(jS:jE,j1,8)*A(jS:jE,8,j2) + A(jS:jE,j1,9)*A(jS:jE,9,j2)
+          end do
+        end do
+        A(jS:jE,:,:) = V(jS:jE,:,:)
+        expo(jS:jE) = expo(jS:jE) - 1
+      end if
+    end do
+
+    if (lhook) call dr_hook('radiation_matrix:expm_sw',1,hook_handle)
+
+  end subroutine expm_sw
 
   !---------------------------------------------------------------------
   ! Return the matrix exponential of n 2x2 matrices representing
@@ -1320,77 +1789,160 @@ pure subroutine identity_minus_mat_x_mat_3_sw(ng_sw_in,A,B,C)
   ! diagonalization method and is a slight generalization of the
   ! solution provided in the appendix of Hogan et al. (GMD 2018),
   ! which assumed c==d.
-  subroutine fast_expm_exchange_3(n,iend,a,b,c,d,R)
+  subroutine fast_expm_exchange_3(ng_sw_in, R)
 
     use yomhook, only : lhook, dr_hook, jphook
 
     real(jprb), parameter :: my_epsilon = 1.0e-12_jprb
 
-    integer,                      intent(in)  :: n, iend
-    real(jprb), dimension(n),     intent(in)  :: a, b, c, d
-    real(jprb), dimension(n,3,3), intent(out) :: R
+    integer,                      intent(in)  :: ng_sw_in
+    real(jprb), dimension(ng_sww,3,3), intent(inout) :: R
 
     ! Eigenvectors
-    real(jprb), dimension(iend,3,3) :: V
+    real(jprb), dimension(ng_sww,3,3) :: V
 
     ! Non-zero Eigenvalues
-    real(jprb), dimension(iend) :: lambda1, lambda2
+    real(jprb), dimension(ng_sww,2) :: lambda
 
     ! Diagonal matrix of the exponential of the eigenvalues
-    real(jprb), dimension(iend,3) :: diag
+    real(jprb), dimension(ng_sww,2) :: diag
 
     ! Result of diag right-divided by V
-    real(jprb), dimension(iend,3,3) :: diag_rdivide_V
+    real(jprb), dimension(ng_sww,3,3) :: X
 
     ! Intermediate arrays
-    real(jprb), dimension(iend) :: tmp1, tmp2
-
-    integer :: j1, j2
+    real(jprb), dimension(ng_sww) :: tmp1, tmp2
+    real(jprb) :: L21, L31, L32, U22_inv, U33_inv, U23, y2, V11_inv
+    integer :: j1, j2, jg
 
     real(jphook) :: hook_handle
+#ifdef __INTEL_COMPILER
+    integer :: ones(ng_sww), minusones(ng_sww), signs(ng_sww)
+    ones = 1
+    minusones = -1
+#endif
 
     if (lhook) call dr_hook('radiation_matrix:fast_expm_exchange_3',0,hook_handle)
+    associate(a=>R(:,2,1),b=>R(:,1,2),c=>R(:,3,2),d=>R(:,2,3))
+      ! Eigenvalues
+      tmp1 = 0.5_jprb * (a(:)+b(:)+c(:)+d(:))
+      tmp2 = sqrt(max(0.0_jprb, tmp1*tmp1 - (a(:)*c(:) + a(:)*d(:) + b(:)*d(:))))
+      ! The eigenvalues must not be the same or the LU decomposition
+      ! fails; this can occur occasionally in single precision, which we
+      ! avoid by limiting the minimum value of tmp2
+      tmp2 = max(tmp2, epsilon(1.0_jprb) * tmp1)
 
-    ! Eigenvalues lambda1 and lambda2
-    tmp1 = 0.5_jprb * (a(1:iend)+b(1:iend)+c(1:iend)+d(1:iend))
-    tmp2 = sqrt(max(0.0_jprb, tmp1*tmp1 - (a(1:iend)*c(1:iend) &
-         &                    + a(1:iend)*d(1:iend) + b(1:iend)*d(1:iend))))
-    ! The eigenvalues must not be the same or the LU decomposition
-    ! fails; this can occur occasionally in single precision, which we
-    ! avoid by limiting the minimum value of tmp2
-    tmp2 = max(tmp2, epsilon(1.0_jprb) * tmp1)
-    lambda1 = -tmp1 + tmp2
-    lambda2 = -tmp1 - tmp2
+      lambda(:,1) = -tmp1 + tmp2
+      lambda(:,2) = -tmp1 - tmp2
 
-    ! Eigenvectors, with securities such that if a--d are all zero
-    ! then V is non-singular and the identity matrix is returned in R;
-    ! note that lambdaX is typically negative so we need a
-    ! sign-preserving security
-    V(1:iend,1,1) = max(my_epsilon, b(1:iend)) &
-         &  / sign(max(my_epsilon, abs(a(1:iend) + lambda1)), a(1:iend) + lambda1)
-    V(1:iend,1,2) = b(1:iend) &
-         &  / sign(max(my_epsilon, abs(a(1:iend) + lambda2)), a(1:iend) + lambda2)
-    V(1:iend,1,3) = b(1:iend) / max(my_epsilon, a(1:iend))
-    V(1:iend,2,:) = 1.0_jprb
-    V(1:iend,3,1) = c(1:iend) &
-         &  / sign(max(my_epsilon, abs(d(1:iend) + lambda1)), d(1:iend) + lambda1)
-    V(1:iend,3,2) = c(1:iend) &
-         &  / sign(max(my_epsilon, abs(d(1:iend) + lambda2)), d(1:iend) + lambda2)
-    V(1:iend,3,3) = max(my_epsilon, c(1:iend)) / max(my_epsilon, d(1:iend))
+      ! Eigenvectors, with securities such taht if a--d are all zero
+      ! then V is non-singular and the identity matrix is returned in R;
+      ! note that lambdaX is typically negative so we need a
+      ! sign-preserving security
+      tmp1 = a(:) + lambda(:,1)
+#ifdef __INTEL_COMPILER
+      ! faster on ifort
+      signs = merge(ones, minusones, tmp1>=0.0_jprb)
+      V(:,1,1) = max(my_epsilon, b(:)) / (signs*max(my_epsilon, abs(tmp1)))
+#else
+      V(:,1,1) = max(my_epsilon, b(:)) / sign(max(my_epsilon, abs(tmp1)), tmp1)
+#endif
+      tmp1 = a(:) + lambda(:,2)
+#ifdef __INTEL_COMPILER
+      signs = merge(ones, minusones, tmp1>=0.0_jprb)
+      V(:,1,2) = b(:) / (signs*max(my_epsilon, abs(tmp1)))
+#else
+      V(:,1,2) = b(:) / sign(max(my_epsilon, abs(tmp1)), tmp1)
+#endif
+      V(:,1,3) = b(:) / max(my_epsilon, a(:))
+      V(:,2,:) = 1.0_jprb
+      tmp1 = d(:) + lambda(:,1)
+#ifdef __INTEL_COMPILER
+      signs = merge(ones, minusones, tmp1>=0.0_jprb)
+      V(:,3,1) = c(:) / (signs*max(my_epsilon, abs(tmp1)))
+#else
+      V(:,3,1) = c(:) / sign(max(my_epsilon, abs(tmp1)), tmp1)
+#endif
+      tmp1 = d(:) + lambda(:,2)
+#ifdef __INTEL_COMPILER
+      signs = merge(ones, minusones, tmp1>=0.0_jprb)
+      V(:,3,2) = c(:) / (signs*max(my_epsilon, abs(tmp1)))
+#else
+      V(:,3,2) = c(:) / sign(max(my_epsilon, abs(tmp1)), tmp1)
+#endif
+      V(:,3,3) = max(my_epsilon, c(:)) / max(my_epsilon, d(:))
+    end associate
 
-    diag(:,1) = exp(lambda1)
-    diag(:,2) = exp(lambda2)
-    diag(:,3) = 1.0_jprb
+    diag = exp(lambda)
+    ! diag(:,1) = exp(lambda(:,1))
+    ! diag(:,2) = exp(lambda(:,2))
+    ! diag(:,3) = 1.0_jprb
 
-    ! Compute diag_rdivide_V = diag * V^-1
-    call diag_mat_right_divide_3(iend,iend,V,diag,diag_rdivide_V)
+    ! ------ Compute X = diag * V^-1 ---------
+    !  call diag_mat_right_divide_3(n,V,diag,X)
 
-    ! Compute V * diag_rdivide_V
+    ! LU decomposition of the *transpose* of V:
+    !       ( 1        )   (U11 U12 U13)
+    ! V^T = (L21  1    ) * (    U22 U23)
+    !       (L31 L32  1)   (        U33)
+    do jg = 1, ng_sww
+      V11_inv = 1.0_jprb / V(jg,1,1)
+
+      L21 = V(jg,1,2) *V11_inv ! / V(jg,1,1)
+      L31 = V(jg,1,3) *V11_inv ! / V(jg,1,1)
+      !U22 = V(jg,2,2) - L21*V(jg,2,1)
+      U22_inv = 1.0_jprb / (V(jg,2,2) - L21*V(jg,2,1))
+      U23 = V(jg,3,2) - L21*V(jg,3,1)
+      L32 =(V(jg,2,3) - L31*V(jg,2,1)) *U22_inv ! / U22
+      ! U33 = V(jg,3,3) - L31*V(jg,3,1) - L32*U23
+      U33_inv = 1.0_jprb / ( V(jg,3,3) - L31*V(jg,3,1) - L32*U23 )
+
+      ! Solve X(1,:) = V^-T ( diag(1) )
+      !                     (  0   )
+      !                     (  0   )
+      ! Solve Ly = diag(:,:,j) by forward substitution
+      ! y1 = diag(jg,1)
+      y2 = - L21*diag(jg,1)
+      ! y3 = - L31*diag(jg,1) - L32*y2
+      ! Solve UX = y by back substitution
+      X(jg,1,3) = (-L31*diag(jg,1) - L32*y2) *U33_inv ! y3 / U33
+      X(jg,1,2) = (y2 - U23*X(jg,1,3)) *U22_inv ! / U22
+      X(jg,1,1) = (diag(jg,1) - V(jg,2,1)*X(jg,1,2) &
+          &          - V(jg,3,1)*X(jg,1,3)) *V11_inv ! / V(jg,1,1)
+
+      ! Solve X(2,jg) = V^-T (  0   )
+      !                     ( diag(2) )
+      !                     (  0   )
+      ! Solve Ly = diag(:,:,j) by forward substitution
+      ! y1 = 0
+      ! y2 = diag(jg,2)
+      ! y3 = - L32*diag(jg,2)
+      ! Solve UX = y by back substitution
+      X(jg,2,3) = (-L32*diag(jg,2)) *U33_inv ! y3 / U33
+      X(jg,2,2) = (diag(jg,2) - U23*X(jg,2,3)) *U22_inv ! / U22
+      X(jg,2,1) = (-V(jg,2,1)*X(jg,2,2) &
+          &           -V(jg,3,1)*X(jg,2,3)) * V11_inv ! / V(jg,1,1)
+
+      ! Solve X(3,jg) = V^-T (  0   )
+      !                     (  0   )
+      !                     ( diag(3) )
+      ! Solve Ly = diag(:,:,j) by forward substitution
+      ! y1 = 0
+      ! y2 = 0
+      ! y3 = diag(jg,3)
+      ! Solve UX = y by back substitution
+      X(jg,3,3) = U33_inv ! diag(jg,3) / U33
+      X(jg,3,2) = -U23*X(jg,3,3) *U22_inv ! / U22
+      X(jg,3,1) = (-V(jg,2,1)*X(jg,3,2) &
+          &          - V(jg,3,1)*X(jg,3,3)) *V11_inv ! / V(jg,1,1)
+    end do
+
+    ! Compute V * X
     do j1 = 1,3
       do j2 = 1,3
-        R(1:iend,j2,j1) = V(1:iend,j2,1)*diag_rdivide_V(1:iend,1,j1) &
-             &          + V(1:iend,j2,2)*diag_rdivide_V(1:iend,2,j1) &
-             &          + V(1:iend,j2,3)*diag_rdivide_V(1:iend,3,j1)
+        R(:,j2,j1) = V(:,j2,1)*X(:,1,j1) &
+            &     + V(:,j2,2)*X(:,2,j1) &
+            &     + V(:,j2,3)*X(:,3,j1)
       end do
     end do
 
