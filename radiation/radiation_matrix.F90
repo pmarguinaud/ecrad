@@ -13,7 +13,8 @@
 ! Email:   r.j.hogan@ecmwf.int
 !
 ! Modifications
-!   2018-10-15  R. Hogan  Added fast_expm_exchange_[23]
+!   2018-10-15  R. Hogan    Added fast_expm_exchange_[23]
+!   2020-12-15  P. Ukkonen  Optimized kernels
 !
 ! This module provides the neccessary mathematical functions for the
 ! SPARTACUS radiation scheme: matrix multiplication, matrix solvers
@@ -35,12 +36,12 @@ module radiation_matrix
   ! (x x x)
   ! (x x x)
   ! (0 0 x)
-  ! where each element may itself be a square matrix.  
+  ! where each element may itself be a square matrix.
   integer, parameter :: IMatrixPatternDense     = 0
   integer, parameter :: IMatrixPatternShortwave = 1
 
-  public  :: mat_x_vec, singlemat_x_vec, mat_x_mat, &
-       &     singlemat_x_mat, mat_x_singlemat, &
+  public  :: mat_x_vec, singlemat_x_vec, singlemat_x_vec_lw, singlemat_x_vec_sw, &
+       &     mat_x_mat, singlemat_x_mat, mat_x_singlemat, &
        &     identity_minus_mat_x_mat, solve_vec, solve_mat, expm, &
        &     fast_expm_exchange_2, fast_expm_exchange_3, &
        &     sparse_x_dense
@@ -48,6 +49,20 @@ module radiation_matrix
   private :: solve_vec_2, solve_vec_3, solve_mat_2, &
        &     solve_mat_3, lu_factorization, lu_substitution, solve_mat_n, &
        &     diag_mat_right_divide_3
+
+! Allow size of inner dimension (number of g-points) to be known at compile time for some routines
+#ifdef NG_SW
+    integer, parameter, private :: ng_sw = NG_SW
+    integer, parameter, private :: ng_sww = 6*NG_SW
+#else
+#define ng_sw ng_sw_in
+#define ng_sww ng_sw_in
+#endif
+#ifdef NG_LW
+    integer, parameter, private :: ng_lw = NG_LW
+#else
+#define ng_lw ng_lw_in
+#endif
 
   interface fast_expm_exchange
     module procedure fast_expm_exchange_2, fast_expm_exchange_3
@@ -135,6 +150,39 @@ contains
 
   end function singlemat_x_vec
 
+  pure function singlemat_x_vec_sw(ng_sw_in,A,b)
+    integer,    intent(in)                      :: ng_sw_in
+    real(jprb), intent(in), dimension(3,3)      :: A
+    real(jprb), intent(in), dimension(ng_sw,3)  :: b
+    real(jprb),             dimension(ng_sw,3)  :: singlemat_x_vec_sw
+    integer    :: jg
+
+    do jg = 1, ng_sw
+      ! both inner and outer loop of the matrix loops j1 and j2 unrolled
+      ! inner loop:                   j2=1             j2=2             j2=3
+      singlemat_x_vec_sw(jg,1) = A(1,1)*b(jg,1) + A(1,2)*b(jg,2) + A(1,3)*b(jg,3) ! j1=1
+      singlemat_x_vec_sw(jg,2) = A(2,1)*b(jg,1) + A(2,2)*b(jg,2) + A(2,3)*b(jg,3) ! j1=2
+      singlemat_x_vec_sw(jg,3) = A(3,1)*b(jg,1) + A(3,2)*b(jg,2) + A(3,3)*b(jg,3) ! j1=3
+    end do
+
+  end function singlemat_x_vec_sw
+
+  pure function singlemat_x_vec_lw(ng_lw_in,A,b)
+    integer,    intent(in)                      :: ng_lw_in
+    real(jprb), intent(in), dimension(3,3)      :: A
+    real(jprb), intent(in), dimension(ng_lw,3)  :: b
+    real(jprb),             dimension(ng_lw,3)  :: singlemat_x_vec_lw
+    integer    :: jg
+
+    do jg = 1, ng_lw
+      ! both inner and outer loop of the matrix loops j1 and j2 unrolled
+      ! inner loop:                   j2=1             j2=2             j2=3
+      singlemat_x_vec_lw(jg,1) = A(1,1)*b(jg,1) + A(1,2)*b(jg,2) + A(1,3)*b(jg,3) ! j1=1
+      singlemat_x_vec_lw(jg,2) = A(2,1)*b(jg,1) + A(2,2)*b(jg,2) + A(2,3)*b(jg,3) ! j1=2
+      singlemat_x_vec_lw(jg,3) = A(3,1)*b(jg,1) + A(3,2)*b(jg,2) + A(3,3)*b(jg,3) ! j1=3
+    end do
+
+  end function singlemat_x_vec_lw
 
   ! --- SQUARE MATRIX-MATRIX MULTIPLICATION ---
 
@@ -173,7 +221,7 @@ contains
       ! A = (F G H)
       !     (0 0 I)
       mblock = m/3
-      m2block = 2*mblock 
+      m2block = 2*mblock
       ! Do the top-left (C, D, F, G)
       do j2 = 1,m2block
         do j1 = 1,m2block
@@ -320,7 +368,7 @@ contains
   end function identity_minus_mat_x_mat
 
 
-  
+
   !---------------------------------------------------------------------
   ! Replacement for matmul in the case that the first matrix is sparse
   function sparse_x_dense(sparse, dense)
@@ -334,7 +382,7 @@ contains
     n1 = size(sparse,1)
     n2 = size(sparse,2)
     n3 = size(dense,2)
-    
+
     sparse_x_dense = 0.0_jprb
     do j2 = 1,n2
       do j1 = 1,n1
@@ -343,9 +391,9 @@ contains
         end if
       end do
     end do
-    
+
   end function sparse_x_dense
-  
+
 
   ! --- REPEATEDLY SQUARE A MATRIX ---
 
@@ -812,7 +860,7 @@ contains
 
     real(jprb), parameter :: theta(3) = (/4.258730016922831e-01_jprb, &
          &                                1.880152677804762e+00_jprb, &
-         &                                3.925724783138660e+00_jprb/) 
+         &                                3.925724783138660e+00_jprb/)
     real(jprb), parameter :: c(8) = (/17297280.0_jprb, 8648640.0_jprb, &
          &                1995840.0_jprb, 277200.0_jprb, 25200.0_jprb, &
          &                1512.0_jprb, 56.0_jprb, 1.0_jprb/)
@@ -893,7 +941,7 @@ contains
     ! Loop through the matrices
     do j1 = 1,iend
       if (expo(j1) > 0) then
-        ! Square matrix j1 expo(j1) times          
+        ! Square matrix j1 expo(j1) times
         A(j1,:,:) = repeated_square(m,A(j1,:,:),expo(j1),i_matrix_pattern)
       end if
     end do
@@ -1006,7 +1054,7 @@ contains
     V(1:iend,3,2) = c(1:iend) &
          &  / sign(max(my_epsilon, abs(d(1:iend) + lambda2)), d(1:iend) + lambda2)
     V(1:iend,3,3) = max(my_epsilon, c(1:iend)) / max(my_epsilon, d(1:iend))
-    
+
     diag(:,1) = exp(lambda1)
     diag(:,2) = exp(lambda2)
     diag(:,3) = 1.0_jprb
@@ -1029,5 +1077,5 @@ contains
 
 !  generic :: fast_expm_exchange => fast_expm_exchange_2, fast_expm_exchange_3
 
- 
+
 end module radiation_matrix

@@ -56,7 +56,7 @@ contains
     use radiation_overlap, only        : calc_overlap_matrices
     use radiation_flux, only           : flux_type, &
          &                               indexed_sum, add_indexed_sum
-    use radiation_matrix, only         : singlemat_x_vec
+    use radiation_matrix, only         : singlemat_x_vec_sw
     use radiation_two_stream, only     : calc_ref_trans_sw
 
     implicit none
@@ -658,9 +658,9 @@ contains
           end if
           ! Account for overlap rules in translating fluxes just above
           ! a layer interface to the values just below
-          flux_dn = singlemat_x_vec(ng,ng,nregions, &
+          flux_dn = singlemat_x_vec_sw(ng, &
                &  v_matrix(:,:,jlev+1), flux_dn)
-          direct_dn = singlemat_x_vec(ng,ng,nregions, &
+          direct_dn = singlemat_x_vec_sw(ng, &
                &  v_matrix(:,:,jlev+1), direct_dn)
         end if ! Otherwise the fluxes in each region are the same so
                ! nothing to do

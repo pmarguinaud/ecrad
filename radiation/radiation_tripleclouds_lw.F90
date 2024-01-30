@@ -52,7 +52,7 @@ contains
     use radiation_regions, only        : calc_region_properties
     use radiation_overlap, only        : calc_overlap_matrices
     use radiation_flux, only           : flux_type, indexed_sum
-    use radiation_matrix, only         : singlemat_x_vec
+    use radiation_matrix, only         : singlemat_x_vec_lw
     use radiation_two_stream, only     : calc_ref_trans_lw, &
          &                               calc_no_scattering_transmittance_lw
     use radiation_adding_ica_lw, only  : adding_ica_lw, calc_fluxes_no_scattering_lw
@@ -485,7 +485,7 @@ contains
           total_albedo(:,:,jlev) = total_albedo_below(:,:)
           total_source(:,:,jlev) = total_source_below(:,:)
         else
-          total_source(:,:,jlev) = singlemat_x_vec(ng,ng,nregions,&
+          total_source(:,:,jlev) = singlemat_x_vec_lw(ng,&
                &  u_matrix(:,:,jlev), total_source_below)
           ! Use overlap matrix and exclude "anomalous" horizontal
           ! transport described by Shonk & Hogan (2008).  Therefore,
@@ -615,7 +615,7 @@ contains
           end if
           ! Account for overlap rules in translating fluxes just above
           ! a layer interface to the values just below
-          flux_dn = singlemat_x_vec(ng, ng, nregions, v_matrix(:,:,jlev+1), flux_dn)
+          flux_dn = singlemat_x_vec_lw(ng, v_matrix(:,:,jlev+1), flux_dn)
         end if ! Otherwise the fluxes in each region are the same so nothing to do
 
         ! Store the broadband fluxes
