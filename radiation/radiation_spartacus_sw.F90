@@ -85,7 +85,7 @@ contains
     use radiation_thermodynamics, only : thermodynamics_type
     use radiation_cloud, only          : cloud_type
     use radiation_regions, only        : calc_region_properties
-    use radiation_overlap, only        : calc_overlap_matrices
+    use radiation_overlap, only        : calc_overlap_matrices_dp
     use radiation_flux, only           : flux_type, &
          &                               indexed_sum, add_indexed_sum
     use radiation_matrix
@@ -330,7 +330,7 @@ contains
     ! Main loop over columns
     do jcol = istartcol, iendcol
       ! Compute wavelength-independent overlap matrices u_matrix and v_matrix
-      call calc_overlap_matrices(nlev, nreg, &
+      call calc_overlap_matrices_dp(nlev, nreg, &
           &  region_fracs(:,:,jcol), cloud%overlap_param(jcol,:), &
           &  u_matrix=u_matrix, v_matrix=v_matrix, decorrelation_scaling=config%cloud_inhom_decorr_scaling, &
           &  cloud_fraction_threshold=config%cloud_fraction_threshold, &
