@@ -259,6 +259,9 @@ contains
     ! interface)
     real(jprb), dimension(ng) :: flux_up_clear, flux_dn_clear
 
+    ! Temporaries to speed up summations
+    real(jprb) :: sum_dn, sum_up
+
     ! Parameterization of internal flux distribution in a cloud that
     ! can lead to the flux just about to exit a cloud being different
     ! from the mean in-cloud value.  "lateral_od" is the typical
@@ -838,30 +841,48 @@ contains
           ! is no need to consider "above" and "below" quantities
           ! since with no cloud overlap to worry about, these are
           ! the same
-          inv_denom_scalar(:) = 1.0_jprb &
-               &  / (1.0_jprb - total_albedo_clear(:,jlev+1)*ref_clear(:,jlev))
-          total_albedo_clear(:,jlev) = ref_clear(:,jlev) &
-               &  + trans_clear(:,jlev)*trans_clear(:,jlev)*total_albedo_clear(:,jlev+1) &
-               &  * inv_denom_scalar(:)
-          total_source_clear(:,jlev) = source_up_clear(:,jlev) &
-               &  + trans_clear(:,jlev)*(total_source_clear(:,jlev+1) &
-               &  + total_albedo_clear(:,jlev+1)*source_dn_clear(:,jlev)) &
-               &  * inv_denom_scalar(:)
+          if (config%do_lw_aerosol_scattering)  then
+            inv_denom_scalar(:) = 1.0_jprb &
+                &  / (1.0_jprb - total_albedo_clear(:,jlev+1)*ref_clear(:,jlev))
+            total_albedo_clear(:,jlev) = ref_clear(:,jlev) &
+                &  + trans_clear(:,jlev)*trans_clear(:,jlev)*total_albedo_clear(:,jlev+1) &
+                &  * inv_denom_scalar(:)
+            total_source_clear(:,jlev) = source_up_clear(:,jlev) &
+                &  + trans_clear(:,jlev)*(total_source_clear(:,jlev+1) &
+                &  + total_albedo_clear(:,jlev+1)*source_dn_clear(:,jlev)) &
+                &  * inv_denom_scalar(:)
+          else  ! ref_clear = 0 --> inv_denom_scalar = 1
+            total_albedo_clear(:,jlev) = &
+                &  trans_clear(:,jlev)*trans_clear(:,jlev)*total_albedo_clear(:,jlev+1)
+            total_source_clear(:,jlev) = source_up_clear(:,jlev) &
+                &  + trans_clear(:,jlev)*(total_source_clear(:,jlev+1) &
+                &  + total_albedo_clear(:,jlev+1)*source_dn_clear(:,jlev))
+          end if
         end if
 
         if (is_clear_sky_layer(jlev)) then
           ! Clear-sky layer: use scalar adding method
-          inv_denom_scalar(:) = 1.0_jprb &
-               &  / (1.0_jprb - total_albedo(:,1,1,jlev+1)*reflectance(:,1,1,jlev))
           total_albedo_below = 0.0_jprb
-          total_albedo_below(:,1,1) = reflectance(:,1,1,jlev) &
-               &  + transmittance(:,1,1,jlev)  * transmittance(:,1,1,jlev) &
-               &  * total_albedo(:,1,1,jlev+1) * inv_denom_scalar(:)
           total_source_below = 0.0_jprb
-          total_source_below(:,1) = source_up(:,1,jlev) &
-               &  + transmittance(:,1,1,jlev)*(total_source(:,1,jlev+1) &
-               &  + total_albedo(:,1,1,jlev+1)*source_dn(:,1,jlev)) &
-               &  * inv_denom_scalar(:)
+          if (config%do_lw_aerosol_scattering)  then
+            inv_denom_scalar(:) = 1.0_jprb &
+                &  / (1.0_jprb - total_albedo(:,1,1,jlev+1)*reflectance(:,1,1,jlev))
+            total_albedo_below(:,1,1) = reflectance(:,1,1,jlev) &
+                &  + transmittance(:,1,1,jlev)  * transmittance(:,1,1,jlev) &
+                &  * total_albedo(:,1,1,jlev+1) * inv_denom_scalar(:)
+            total_source_below(:,1) = source_up(:,1,jlev) &
+                &  + transmittance(:,1,1,jlev)*(total_source(:,1,jlev+1) &
+                &  + total_albedo(:,1,1,jlev+1)*source_dn(:,1,jlev)) &
+                &  * inv_denom_scalar(:)
+          else
+            total_albedo_below(:,1,1) = reflectance(:,1,1,jlev) &
+                &  + transmittance(:,1,1,jlev)  * transmittance(:,1,1,jlev) &
+                &  * total_albedo(:,1,1,jlev+1)
+            total_source_below(:,1) = source_up(:,1,jlev) &
+                &  + transmittance(:,1,1,jlev)*(total_source(:,1,jlev+1) &
+                &  + total_albedo(:,1,1,jlev+1)*source_dn(:,1,jlev))
+          end if
+
         else if (config%do_3d_effects .or. &
              &   config%do_3d_lw_multilayer_effects) then
           ! Cloudy layer: use matrix adding method
@@ -975,10 +996,15 @@ contains
       do jlev = 1,nlev
         if (config%do_clear) then
           ! Scalar operations for clear-sky fluxes
-          flux_dn_clear(:) = (trans_clear(:,jlev)*flux_dn_clear(:) &
-               + ref_clear(:,jlev)*total_source_clear(:,jlev+1) &
-               + source_dn_clear(:,jlev)) &
-               / (1.0_jprb - ref_clear(:,jlev)*total_albedo_clear(:,jlev+1))
+          if (config%do_lw_aerosol_scattering)  then
+            flux_dn_clear(:) = (trans_clear(:,jlev)*flux_dn_clear(:) &
+                + ref_clear(:,jlev)*total_source_clear(:,jlev+1) &
+                + source_dn_clear(:,jlev)) &
+                / (1.0_jprb - ref_clear(:,jlev)*total_albedo_clear(:,jlev+1))
+          else ! ref_clear = 0
+            flux_dn_clear(:) = trans_clear(:,jlev)*flux_dn_clear(:) &
+              + source_dn_clear(:,jlev)
+          end if
           flux_up_clear(:) = total_source_clear(:,jlev+1) &
                + total_albedo_clear(:,jlev+1)*flux_dn_clear(:)
         end if
@@ -1028,11 +1054,34 @@ contains
         end if
 
         ! Store the broadband fluxes
-        flux%lw_up(jcol,jlev+1) = sum(sum(flux_up_above,1))
-        flux%lw_dn(jcol,jlev+1) = sum(sum(flux_dn_above,1))
+        sum_up = 0.0_jprb
+        sum_dn = 0.0_jprb
+        if (is_clear_sky_layer(jlev)) then
+          !$omp simd reduction(+:sum_up, sum_dn)
+          do jg = 1, ng
+            sum_up = sum_up + flux_up_above(jg,1)
+            sum_dn = sum_dn + flux_dn_above(jg,1)
+          end do
+        else
+          !$omp simd reduction(+:sum_up, sum_dn)
+          do jg = 1, ng
+            sum_up = sum_up + flux_up_above(jg,1) + flux_up_above(jg,2) + flux_up_above(jg,3)
+            sum_dn = sum_dn + flux_dn_above(jg,1) + flux_dn_above(jg,2) + flux_dn_above(jg,3)
+          end do
+        end if
+        flux%lw_up(jcol,jlev+1) = sum_up
+        flux%lw_dn(jcol,jlev+1) = sum_dn
+
         if (config%do_clear) then
-          flux%lw_up_clear(jcol,jlev+1) = sum(flux_up_clear)
-          flux%lw_dn_clear(jcol,jlev+1) = sum(flux_dn_clear)
+          sum_up = 0.0_jprb
+          sum_dn = 0.0_jprb
+          !$omp simd reduction(+:sum_up, sum_dn)
+          do jg = 1, ng
+            sum_up = sum_up + flux_up_clear(jg)
+            sum_dn = sum_dn + flux_dn_clear(jg)
+          end do
+          flux%lw_up_clear(jcol,jlev+1) = sum_up
+          flux%lw_dn_clear(jcol,jlev+1) = sum_dn
         end if
 
         if (config%do_save_spectral_flux) then

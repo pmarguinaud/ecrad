@@ -262,7 +262,7 @@ contains
 
     ! Clear-sky equivalent, but actually its reciprocal to replace
     ! some divisions by multiplications
-    real(jprb), dimension(ng) :: inv_denom_scalar
+    real(jprb) :: inv_denom_scalar
 
     ! Final step in working out how much transport between regions
     ! above occurs
@@ -298,6 +298,9 @@ contains
 
     ! Maximum entrapment coefficient
     real(jprb) :: max_entr
+
+    ! Temporaries to speed up summations
+    real(jprb) :: sum_dn, sum_up
 
     real(jphook) :: hook_handle
 
@@ -391,16 +394,14 @@ contains
       ! At this point mu0 >= 1.0e-10
 
       ! Used to compute rate of attenuation of direct solar beam
-      ! through the atmosphere
-      one_over_mu0 = 1.0_jprb / mu0
+      ! through the atmosphere; for stability we limit this to one
+      ! solar radius above the horizon.  Elsewhere, mu0 is used to
+      ! scale the incoming fluxes so is not changed.
+      one_over_mu0 = 1.0_jprb / max(min_mu0_3d, mu0)
 
       ! The rate at which direct radiation enters cloud sides is
-      ! proportional to the tangent of the solar zenith angle, but
-      ! this gets very large when the sun is low in the sky, in which
-      ! case we limit it to one solar radius above the horizon
-      if (mu0 < min_mu0_3d) then
-        tan_sza = sqrt(1.0_jprb/(min_mu0_3d*min_mu0_3d) - 1.0_jprb)
-      else if (one_over_mu0 > 1.0_jprb) then
+      ! proportional to the tangent of the solar zenith angle
+      if (one_over_mu0 > 1.0_jprb) then
         tan_sza = sqrt(one_over_mu0*one_over_mu0 - 1.0_jprb &
              &         + config%overhead_sun_factor)
       else
@@ -892,30 +893,34 @@ contains
           ! is no need to consider "above" and "below" quantities
           ! since with no cloud overlap to worry about, these are
           ! the same
-          inv_denom_scalar(:) = 1.0_jprb &
-               &  / (1.0_jprb - total_albedo_clear(:,jlev+1)*ref_clear(:,jlev))
-          total_albedo_clear(:,jlev) = ref_clear(:,jlev) &
-               &  + trans_clear(:,jlev)*trans_clear(:,jlev)*total_albedo_clear(:,jlev+1) &
-               &  * inv_denom_scalar(:)
-          total_albedo_clear_direct(:,jlev) = ref_dir_clear(:,jlev) &
-               &  + (trans_dir_dir_clear(:,jlev) * total_albedo_clear_direct(:,jlev+1) &
-               &    +trans_dir_diff_clear(:,jlev) * total_albedo_clear(:,jlev+1)) &
-               &  * trans_clear(:,jlev) * inv_denom_scalar(:)
+          do jg = 1,ng
+            inv_denom_scalar = 1.0_jprb &
+                &  / (1.0_jprb - total_albedo_clear(jg,jlev+1)*ref_clear(jg,jlev))
+            total_albedo_clear(jg,jlev) = ref_clear(jg,jlev) &
+                &  + trans_clear(jg,jlev)*trans_clear(jg,jlev)*total_albedo_clear(jg,jlev+1) &
+                &  * inv_denom_scalar
+            total_albedo_clear_direct(jg,jlev) = ref_dir_clear(jg,jlev) &
+                &  + (trans_dir_dir_clear(jg,jlev) * total_albedo_clear_direct(jg,jlev+1) &
+                &    +trans_dir_diff_clear(jg,jlev) * total_albedo_clear(jg,jlev+1)) &
+                &  * trans_clear(jg,jlev) * inv_denom_scalar
+          end do
         end if
 
         if (is_clear_sky_layer(jlev)) then
           ! Clear-sky layer: use scalar adding method
-          inv_denom_scalar(:) = 1.0_jprb &
-               &  / (1.0_jprb - total_albedo(:,1,1,jlev+1)*reflectance(:,1,1,jlev))
           total_albedo_below = 0.0_jprb
-          total_albedo_below(:,1,1) = reflectance(:,1,1,jlev) &
-               &  + transmittance(:,1,1,jlev)  * transmittance(:,1,1,jlev) &
-               &  * total_albedo(:,1,1,jlev+1) * inv_denom_scalar(:)
           total_albedo_below_direct = 0.0_jprb
-          total_albedo_below_direct(:,1,1) = ref_dir(:,1,1,jlev) &
-               &  + (trans_dir_dir(:,1,1,jlev)*total_albedo_direct(:,1,1,jlev+1) &
-               &    +trans_dir_diff(:,1,1,jlev)*total_albedo(:,1,1,jlev+1)) &
-               &  * transmittance(:,1,1,jlev) * inv_denom_scalar(:)
+          do jg = 1,ng
+            inv_denom_scalar = 1.0_jprb &
+                &  / (1.0_jprb - total_albedo(jg,1,1,jlev+1)*reflectance(jg,1,1,jlev))
+            total_albedo_below(jg,1,1) = reflectance(jg,1,1,jlev) &
+                &  + transmittance(jg,1,1,jlev)  * transmittance(jg,1,1,jlev) &
+                &  * total_albedo(jg,1,1,jlev+1) * inv_denom_scalar
+            total_albedo_below_direct(jg,1,1) = ref_dir(jg,1,1,jlev) &
+                &  + (trans_dir_dir(jg,1,1,jlev)*total_albedo_direct(jg,1,1,jlev+1) &
+                &    +trans_dir_diff(jg,1,1,jlev)*total_albedo(jg,1,1,jlev+1)) &
+                &  * transmittance(jg,1,1,jlev) * inv_denom_scalar
+          end do
         else
           ! Cloudy layer: use matrix adding method
           denominator = identity_minus_mat_x_mat(ng,ng,nreg, &
@@ -1496,24 +1501,28 @@ end if
 
         if (config%do_clear) then
           ! Scalar operations for clear-sky fluxes
-          flux_dn_clear(:) = (trans_clear(:,jlev)*flux_dn_clear(:) &
-               &  + ref_clear(:,jlev)*total_albedo_clear_direct(:,jlev+1)*direct_dn_clear &
-               &  + source_dn_clear) &
-               &  / (1.0_jprb - ref_clear(:,jlev)*total_albedo_clear(:,jlev+1))
-          flux_up_clear(:) = total_albedo_clear_direct(:,jlev+1)*direct_dn_clear &
-               &  + total_albedo_clear(:,jlev+1)*flux_dn_clear
+          do jg = 1, ng
+            flux_dn_clear(jg) = (trans_clear(jg,jlev)*flux_dn_clear(jg) &
+               &  + ref_clear(jg,jlev)*total_albedo_clear_direct(jg,jlev+1)*direct_dn_clear(jg) &
+               &  + source_dn_clear(jg)) &
+               &  / (1.0_jprb - ref_clear(jg,jlev)*total_albedo_clear(jg,jlev+1))
+            flux_up_clear(jg) = total_albedo_clear_direct(jg,jlev+1)*direct_dn_clear(jg) &
+               &  + total_albedo_clear(jg,jlev+1)*flux_dn_clear(jg)
+          end do
         end if
 
         if (is_clear_sky_layer(jlev)) then
           ! Scalar operations for clear-sky layer
-          flux_dn_above(:,1) = (transmittance(:,1,1,jlev)*flux_dn_below(:,1) &
-               &  + reflectance(:,1,1,jlev)*total_albedo_direct(:,1,1,jlev+1)*direct_dn_above(:,1) &
-               &  + source_dn(:,1)) &
-               &  / (1.0_jprb - reflectance(:,1,1,jlev)*total_albedo(:,1,1,jlev+1))
-          flux_dn_above(:,2:nreg) = 0.0_jprb
-          flux_up_above(:,1) = total_albedo_direct(:,1,1,jlev+1)*direct_dn_above(:,1) &
-               &  + total_albedo(:,1,1,jlev+1)*flux_dn_above(:,1)
-          flux_up_above(:,2:nreg) = 0.0_jprb
+          do jg = 1,ng
+            flux_dn_above(jg,1) = (transmittance(jg,1,1,jlev)*flux_dn_below(jg,1) &
+                &  + reflectance(jg,1,1,jlev)*total_albedo_direct(jg,1,1,jlev+1)*direct_dn_above(jg,1) &
+                &  + source_dn(jg,1)) &
+                &  / (1.0_jprb - reflectance(jg,1,1,jlev)*total_albedo(jg,1,1,jlev+1))
+            flux_dn_above(jg,2:nreg) = 0.0_jprb
+            flux_up_above(jg,1) = total_albedo_direct(jg,1,1,jlev+1)*direct_dn_above(jg,1) &
+                &  + total_albedo(jg,1,1,jlev+1)*flux_dn_above(jg,1)
+            flux_up_above(jg,2:nreg) = 0.0_jprb
+          end do
         else
           ! Matrix operations for cloudy layer
           denominator = identity_minus_mat_x_mat(ng,ng,nreg,reflectance(:,:,:,jlev), &
@@ -1546,11 +1555,28 @@ end if
         end if
 
         ! Store the broadband fluxes
-        flux%sw_up(jcol,jlev+1) = sum(sum(flux_up_above,1))
+        sum_up = 0.0_jprb
+        if (is_clear_sky_layer(jlev)) then
+          !$omp simd reduction(+:sum_up)
+          do jg = 1,ng
+            sum_up = sum_up + flux_up_above(jg,1)
+          end do
+        else
+          !$omp simd reduction(+:sum_up)
+          do jg = 1,ng
+            sum_up = sum_up + flux_up_above(jg,1) + flux_up_above(jg,2) + flux_up_above(jg,3)
+          end do
+        end if
+        flux%sw_up(jcol,jlev+1) = sum_up
         flux%sw_dn(jcol,jlev+1) &
              &  = flux%sw_dn(jcol,jlev+1) + sum(sum(flux_dn_above,1))
         if (config%do_clear) then
-          flux%sw_up_clear(jcol,jlev+1) = sum(flux_up_clear)
+          sum_up = 0.0_jprb
+          !$omp simd reduction(+:sum_up)
+          do jg = 1,ng
+            sum_up = sum_up + flux_up_clear(jg)
+          end do
+          flux%sw_up_clear(jcol,jlev+1) = sum_up
           flux%sw_dn_clear(jcol,jlev+1) &
                &  = flux%sw_dn_clear(jcol,jlev+1) + sum(flux_dn_clear)
         end if
@@ -1605,7 +1631,7 @@ end if
   ! Step the horizontal migration distances from the base of a layer
   ! to the top, accounting for the extra distance travelled within the
   ! layer
-  subroutine step_migrations(ng, nreg, cloud_frac, &
+  pure subroutine step_migrations(ng_sw_in, nreg, cloud_frac, &
        &  layer_depth, tan_diffuse_angle_3d, tan_sza, &
        &  reflectance, transmittance, ref_dir, trans_dir_dir, &
        &  trans_dir_diff, total_albedo_diff, total_albedo_dir, &
@@ -1618,7 +1644,7 @@ end if
     ! Inputs
 
     ! Number of g points and regions
-    integer, intent(in) :: ng, nreg
+    integer, intent(in) :: ng_sw_in, nreg
     ! Cloud fraction
     real(jprb), intent(in) :: cloud_frac
     ! Layer depth (m), tangent of diffuse zenith angle and tangent of
@@ -1646,17 +1672,17 @@ end if
 
     ! Top albedo, i.e. the albedo of the top of the layer assuming no
     ! lateral transport
-    real(jprb), dimension(ng) :: top_albedo
+    real(jprb) :: top_albedo
 
     ! Multiple-scattering amplitude enhancement
-    real(jprb), dimension(ng) :: ms_enhancement
+    real(jprb) :: ms_enhancement
 
     ! Multiple-scattering distance enhancement
-    real(jprb), dimension(ng) :: x_enhancement
+    real(jprb) :: x_enhancement
 
 
-    real(jprb) :: x_layer_diffuse, x_layer_direct
-    integer :: jreg, istartreg, iendreg
+    real(jprb) :: x_layer_diffuse, x_layer_direct, one_min_ref_x_albedo
+    integer :: jreg, istartreg, iendreg, jg
 
     istartreg = 1
     iendreg   = nreg
@@ -1681,35 +1707,40 @@ end if
          &                             + tan_diffuse_angle_3d*tan_diffuse_angle_3d) * 0.5_jprb
 
     do jreg = istartreg,iendreg
-      ! Geometric series enhancement due to multiple scattering: the
-      ! amplitude enhancement is equal to the limit of
-      ! T*[1+RA+(RA)^2+(RA)^3+...]
-      ms_enhancement = transmittance(:,jreg,jreg) &
-           &  / (1.0_jprb - reflectance(:,jreg,jreg)*total_albedo_diff(:,jreg,jreg))
-      ! ...and the distance enhancement is approximately equal to the
-      ! limit of T*[1+sqrt(2)*RA+sqrt(3)*(RA)^2+sqrt(4)*(RA)^3+...]
-      x_enhancement = (1.0_jprb - reflectance(:,jreg,jreg)*total_albedo_diff(:,jreg,jreg))**(-1.5_jprb)
+      do jg = 1, ng
+        ! Geometric series enhancement due to multiple scattering: the
+        ! amplitude enhancement is equal to the limit of
+        ! T*[1+RA+(RA)^2+(RA)^3+...]
+        one_min_ref_x_albedo = 1.0_jprb - reflectance(jg,jreg,jreg)*total_albedo_diff(jg,jreg,jreg)
+        ms_enhancement = transmittance(jg,jreg,jreg) / one_min_ref_x_albedo
 
-      ! Horizontal migration of direct downwelling radiation
-      top_albedo = max(1.0e-8_jprb, ref_dir(:,jreg,jreg) + ms_enhancement &
-           &  * (trans_dir_diff(:,jreg,jreg)*total_albedo_diff(:,jreg,jreg) &
-           &     +trans_dir_dir(:,jreg,jreg)*total_albedo_dir(:,jreg,jreg)))
-      ! The following is approximate and has been found to
-      ! occasionally go negative
-      x_direct(:,jreg) = max(0.0_jprb, x_layer_direct &
-           &  + ((trans_dir_diff(:,jreg,jreg)*total_albedo_diff(:,jreg,jreg)*x_enhancement &
-           &      +trans_dir_dir(:,jreg,jreg)*total_albedo_dir(:,jreg,jreg)*(x_enhancement-1.0_jprb)) &
-           &     *(x_diffuse(:,jreg)+x_layer_diffuse) &
-           &    +trans_dir_dir(:,jreg,jreg)*total_albedo_dir(:,jreg,jreg) &
-           &     *(x_direct(:,jreg)+x_layer_direct)) &
-           &    * transmittance(:,jreg,jreg) / top_albedo)
+        ! ...and the distance enhancement is approximately equal to the
+        ! limit of T*[1+sqrt(2)*RA+sqrt(3)*(RA)^2+sqrt(4)*(RA)^3+...]
+        ! x_enhancement = one_min_ref_x_albedo**(-1.5_jprb)
+        ! pow() is very slow, luckily we can exploit that X**-1.5 = 1 / X**(1+0.5) = 1 / (X**1 * X**0.5)
+        x_enhancement = 1.0_jprb / (one_min_ref_x_albedo * sqrt(one_min_ref_x_albedo))
 
-      ! Horizontal migration of diffuse downwelling radiation
-      top_albedo = max(1.0e-8_jprb, reflectance(:,jreg,jreg) &
-           &  + ms_enhancement*transmittance(:,jreg,jreg)*total_albedo_diff(:,jreg,jreg))
-      x_diffuse(:,jreg) = x_layer_diffuse + x_enhancement*total_albedo_diff(:,jreg,jreg) &
-           &  *(transmittance(:,jreg,jreg)*transmittance(:,jreg,jreg)) &
-           &  * (x_diffuse(:,jreg) + x_layer_diffuse) / top_albedo
+        ! Horizontal migration of direct downwelling radiation
+        top_albedo = max(1.0e-8_jprb, ref_dir(jg,jreg,jreg) + ms_enhancement &
+            &  * (trans_dir_diff(jg,jreg,jreg)*total_albedo_diff(jg,jreg,jreg) &
+            &     +trans_dir_dir(jg,jreg,jreg)*total_albedo_dir(jg,jreg,jreg)))
+        ! The following is approximate and has been found to
+        ! occasionally go negative
+        x_direct(jg,jreg) = max(0.0_jprb, x_layer_direct &
+            &  + ((trans_dir_diff(jg,jreg,jreg)*total_albedo_diff(jg,jreg,jreg)*x_enhancement &
+            &      +trans_dir_dir(jg,jreg,jreg)*total_albedo_dir(jg,jreg,jreg)*(x_enhancement-1.0_jprb)) &
+            &     *(x_diffuse(jg,jreg)+x_layer_diffuse) &
+            &    +trans_dir_dir(jg,jreg,jreg)*total_albedo_dir(jg,jreg,jreg) &
+            &     *(x_direct(jg,jreg)+x_layer_direct)) &
+            &    * transmittance(jg,jreg,jreg) / top_albedo)
+
+        ! Horizontal migration of diffuse downwelling radiation
+        top_albedo = max(1.0e-8_jprb, reflectance(jg,jreg,jreg) &
+            &  + ms_enhancement*transmittance(jg,jreg,jreg)*total_albedo_diff(jg,jreg,jreg))
+        x_diffuse(jg,jreg) = x_layer_diffuse + x_enhancement*total_albedo_diff(jg,jreg,jreg) &
+            &  *(transmittance(jg,jreg,jreg)*transmittance(jg,jreg,jreg)) &
+            &  * (x_diffuse(jg,jreg) + x_layer_diffuse) / top_albedo
+      end do
 
     end do
     if (iendreg < nreg) then
