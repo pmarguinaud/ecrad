@@ -300,7 +300,7 @@ contains
     real(jprb) :: max_entr
 
     ! Temporaries to speed up summations
-    real(jprb) :: sum_dn, sum_up
+    real(jprb) :: sum_dn, sum_up, sum_dn_dir
 
     real(jphook) :: hook_handle
 
@@ -1450,55 +1450,37 @@ end if
         ! Compute the solar downwelling "source" at the base of the
         ! layer due to scattering of the direct beam within it
         if (config%do_clear) then
-          source_dn_clear = trans_dir_diff_clear(:,jlev)*direct_dn_clear
+          do jg = 1,ng
+            source_dn_clear(jg) = trans_dir_diff_clear(jg,jlev)*direct_dn_clear(jg)
+          ! Compute direct downwelling flux in each region at base of
+          ! current layer
+            direct_dn_clear(jg) = trans_dir_dir_clear(jg,jlev)*direct_dn_clear(jg)
+          end do
         end if
-        source_dn(:,:) = mat_x_vec(ng,ng,nreg,trans_dir_diff(:,:,:,jlev),direct_dn_below, &
-             &  is_clear_sky_layer(jlev))
 
-        ! Compute direct downwelling flux in each region at base of
-        ! current layer
-        if (config%do_clear) then
-          direct_dn_clear = trans_dir_dir_clear(:,jlev)*direct_dn_clear
-        end if
-        direct_dn_above = mat_x_vec(ng,ng,nreg,trans_dir_dir(:,:,:,jlev),direct_dn_below, &
-             &  is_clear_sky_layer(jlev))
-
-        ! Integrate downwelling direct flux across spectrum and
-        ! regions, and store (the diffuse part will be added later)
-        flux%sw_dn(jcol,jlev+1) = mu0 * sum(sum(direct_dn_above,1))
-        if (allocated(flux%sw_dn_direct)) then
-          flux%sw_dn_direct(jcol,jlev+1) = flux%sw_dn(jcol,jlev+1)
-        end if
-        if (config%do_clear) then
-          flux%sw_dn_clear(jcol,jlev+1) = mu0 * sum(direct_dn_clear)
-          if (allocated(flux%sw_dn_direct_clear)) then
-            flux%sw_dn_direct_clear(jcol,jlev+1) &
-                 &  = flux%sw_dn_clear(jcol,jlev+1)
+        ! Integrate downwelling direct flux across spectrum and regions
+        ! source_dn(:,:) = mat_x_vec_3_sw(ng,trans_dir_diff(:,:,:,jlev),direct_dn_below, &
+        !     &  is_clear_sky_layer(jlev))
+        ! direct_dn_above = mat_x_vec_3_sw(ng,trans_dir_dir(:,:,:,jlev),direct_dn_below, &
+        !     &  is_clear_sky_layer(jlev))
+        associate(A1=>trans_dir_diff(:,:,:,jlev), A2=>trans_dir_dir(:,:,:,jlev), &
+                & b=>direct_dn_below)
+          if (is_clear_sky_layer(jlev)) then
+            source_dn             = 0.0_jprb
+            source_dn(:,1)        = A1(:,1,1)*b(:,1)
+            direct_dn_above       = 0.0_jprb
+            direct_dn_above(:,1)  = A2(:,1,1)*b(:,1)
+          else
+            do jg = 1, ng
+              source_dn(jg,1) = A1(jg,1,1)*b(jg,1) + A1(jg,1,2)*b(jg,2) + A1(jg,1,3)*b(jg,3)
+              source_dn(jg,2) = A1(jg,2,1)*b(jg,1) + A1(jg,2,2)*b(jg,2) + A1(jg,2,3)*b(jg,3)
+              source_dn(jg,3) = A1(jg,3,1)*b(jg,1) + A1(jg,3,2)*b(jg,2) + A1(jg,3,3)*b(jg,3)
+              direct_dn_above(jg,1) = A2(jg,1,1)*b(jg,1) + A2(jg,1,2)*b(jg,2) + A2(jg,1,3)*b(jg,3)
+              direct_dn_above(jg,2) = A2(jg,2,1)*b(jg,1) + A2(jg,2,2)*b(jg,2) + A2(jg,2,3)*b(jg,3)
+              direct_dn_above(jg,3) = A2(jg,3,1)*b(jg,1) + A2(jg,3,2)*b(jg,2) + A2(jg,3,3)*b(jg,3)
+            end do
           end if
-        end if
-
-        if (config%do_save_spectral_flux) then
-          call indexed_sum(sum(direct_dn_above,2), &
-               &           config%i_spec_from_reordered_g_sw, &
-               &           flux%sw_dn_band(:,jcol,jlev+1))
-          flux%sw_dn_band(:,jcol,jlev+1) = mu0 * flux%sw_dn_band(:,jcol,jlev+1)
-
-          if (allocated(flux%sw_dn_direct_band)) then
-            flux%sw_dn_direct_band(:,jcol,jlev+1) &
-                 &   = flux%sw_dn_band(:,jcol,jlev+1)
-          end if
-          if (config%do_clear) then
-            call indexed_sum(direct_dn_clear, &
-                 &           config%i_spec_from_reordered_g_sw, &
-                 &           flux%sw_dn_clear_band(:,jcol,jlev+1))
-            flux%sw_dn_clear_band(:,jcol,jlev+1) = mu0 &
-                 &   * flux%sw_dn_clear_band(:,jcol,jlev+1)
-            if (allocated(flux%sw_dn_direct_clear_band)) then
-              flux%sw_dn_direct_clear_band(:,jcol,jlev+1) &
-                   &  = flux%sw_dn_clear_band(:,jcol,jlev+1)
-            end if
-          end if
-        end if
+        end associate
 
         if (config%do_clear) then
           ! Scalar operations for clear-sky fluxes
@@ -1557,33 +1539,69 @@ end if
 
         ! Store the broadband fluxes
         sum_up = 0.0_jprb
+        sum_dn = 0.0_jprb
+        sum_dn_dir = 0.0_jprb
         if (is_clear_sky_layer(jlev)) then
-          !$omp simd reduction(+:sum_up)
+          !$omp simd reduction(+:sum_up, sum_dn, sum_dn_dir)
           do jg = 1,ng
             sum_up = sum_up + flux_up_above(jg,1)
+            sum_dn = sum_dn + flux_dn_above(jg,1)
+            sum_dn_dir = sum_dn_dir + direct_dn_above(jg,1)
           end do
         else
-          !$omp simd reduction(+:sum_up)
+          !$omp simd reduction(+:sum_up, sum_dn, sum_dn_dir)
           do jg = 1,ng
             sum_up = sum_up + flux_up_above(jg,1) + flux_up_above(jg,2) + flux_up_above(jg,3)
+            sum_dn = sum_dn + flux_dn_above(jg,1) + flux_dn_above(jg,2) + flux_dn_above(jg,3)
+            sum_dn_dir = sum_dn_dir + direct_dn_above(jg,1) + direct_dn_above(jg,2) + direct_dn_above(jg,3)
           end do
         end if
         flux%sw_up(jcol,jlev+1) = sum_up
-        flux%sw_dn(jcol,jlev+1) &
-             &  = flux%sw_dn(jcol,jlev+1) + sum(sum(flux_dn_above,1))
+        flux%sw_dn(jcol,jlev+1) = mu0 * sum_dn_dir + sum_dn
+        if (allocated(flux%sw_dn_direct)) then
+          flux%sw_dn_direct(jcol,jlev+1) = mu0 * sum_dn_dir
+        end if
         if (config%do_clear) then
           sum_up = 0.0_jprb
-          !$omp simd reduction(+:sum_up)
+          sum_dn = 0.0_jprb
+          sum_dn_dir = 0.0_jprb
+          !$omp simd reduction(+:sum_up, sum_dn, sum_dn_dir)
           do jg = 1,ng
             sum_up = sum_up + flux_up_clear(jg)
+            sum_dn = sum_dn + flux_dn_clear(jg)
+            sum_dn_dir = sum_dn_dir + direct_dn_clear(jg)
           end do
           flux%sw_up_clear(jcol,jlev+1) = sum_up
-          flux%sw_dn_clear(jcol,jlev+1) &
-               &  = flux%sw_dn_clear(jcol,jlev+1) + sum(flux_dn_clear)
+          flux%sw_dn_clear(jcol,jlev+1) = mu0 * sum_dn_dir + sum_dn
+          if (allocated(flux%sw_dn_direct_clear)) then
+            flux%sw_dn_direct_clear(jcol,jlev+1) = mu0 * sum_dn_dir
+          end if
         end if
 
         ! Save the spectral fluxes if required
         if (config%do_save_spectral_flux) then
+          ! Down
+          call indexed_sum(sum(direct_dn_above,2), &
+               &           config%i_spec_from_reordered_g_sw, &
+               &           flux%sw_dn_band(:,jcol,jlev+1))
+          flux%sw_dn_band(:,jcol,jlev+1) = mu0 * flux%sw_dn_band(:,jcol,jlev+1)
+
+          if (allocated(flux%sw_dn_direct_band)) then
+            flux%sw_dn_direct_band(:,jcol,jlev+1) &
+                 &   = flux%sw_dn_band(:,jcol,jlev+1)
+          end if
+          if (config%do_clear) then
+            call indexed_sum(direct_dn_clear, &
+                 &           config%i_spec_from_reordered_g_sw, &
+                 &           flux%sw_dn_clear_band(:,jcol,jlev+1))
+            flux%sw_dn_clear_band(:,jcol,jlev+1) = mu0 &
+                 &   * flux%sw_dn_clear_band(:,jcol,jlev+1)
+            if (allocated(flux%sw_dn_direct_clear_band)) then
+              flux%sw_dn_direct_clear_band(:,jcol,jlev+1) &
+                   &  = flux%sw_dn_clear_band(:,jcol,jlev+1)
+            end if
+          end if
+          ! Up
           call indexed_sum(sum(flux_up_above,2), &
                &           config%i_spec_from_reordered_g_sw, &
                &           flux%sw_up_band(:,jcol,jlev+1))
