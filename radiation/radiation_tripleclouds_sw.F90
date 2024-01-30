@@ -39,8 +39,8 @@ contains
   ! dividing each model level into three regions, one clear and two
   ! cloudy (with differing optical depth). This approach was described
   ! by Shonk and Hogan (2008).
-  subroutine solver_tripleclouds_sw(nlev,istartcol,iendcol, &
-       &  config, single_level, cloud, & 
+  subroutine solver_tripleclouds_sw(ng_sw_in, nlev,istartcol,iendcol, &
+       &  config, single_level, cloud, &
        &  od, ssa, g, od_cloud, ssa_cloud, g_cloud, &
        &  albedo_direct, albedo_diffuse, incoming_sw, &
        &  flux)
@@ -63,8 +63,16 @@ contains
 
     ! Number of regions
     integer, parameter :: nregions = 3
-    
+
+    ! Allow size of inner dimension (number of g-points) to be known at compile time if NG_SW is defined
+#ifdef NG_SW
+    integer, parameter :: ng = NG_SW
+#else
+#define ng ng_sw_in
+#endif
+
     ! Inputs
+    integer, intent(in) :: ng_sw_in           ! number of g-points
     integer, intent(in) :: nlev               ! number of model levels
     integer, intent(in) :: istartcol, iendcol ! range of columns to process
     type(config_type),        intent(in) :: config
@@ -73,8 +81,8 @@ contains
 
     ! Gas and aerosol optical depth, single-scattering albedo and
     ! asymmetry factor at each shortwave g-point
-    real(jprb), intent(in), dimension(config%n_g_sw,nlev,istartcol:iendcol) &
-         &  :: od, ssa, g
+    real(jprb), intent(in), dimension(ng,nlev,istartcol:iendcol) :: &
+         &  od, ssa, g
 
     ! Cloud and precipitation optical depth, single-scattering albedo and
     ! asymmetry factor in each shortwave band
@@ -84,20 +92,23 @@ contains
     ! Optical depth, single scattering albedo and asymmetry factor in
     ! each g-point of each cloudy region including gas, aerosol and
     ! clouds
-    real(jprb), dimension(config%n_g_sw,2:nregions) &
-         &  :: od_total, ssa_total, g_total
+    ! real(jprb), dimension(config%n_g_sw,2:nregions) &
+    !      &  :: od_total, ssa_total, g_total
+    ! Now allocatable due to batching computations for cloudy regions
+    real(jprb), dimension(:,:,:), allocatable, target &
+         &  :: od_tot_batch, ssa_tot_batch, g_tot_batch
 
     ! Direct and diffuse surface albedos, and the incoming shortwave
     ! flux into a plane perpendicular to the incoming radiation at
     ! top-of-atmosphere in each of the shortwave g points
-    real(jprb), intent(in), dimension(config%n_g_sw,istartcol:iendcol) &
-         &  :: albedo_direct, albedo_diffuse, incoming_sw
+    real(jprb), intent(in), dimension(ng,istartcol:iendcol) :: &
+         &  albedo_direct, albedo_diffuse, incoming_sw
 
     ! Output
     type(flux_type), intent(inout):: flux
 
     ! Local variables
-    
+
     ! The area fractions of each region
     real(jprb) :: region_fracs(1:nregions,nlev,istartcol:iendcol)
 
@@ -111,20 +122,20 @@ contains
 
     ! Diffuse reflection and transmission matrices in the cloudy
     ! regions of each layer
-    real(jprb), dimension(config%n_g_sw, 2:nregions, nlev) &
+    real(jprb), dimension(ng, 2:nregions, nlev) &
          &  :: reflectance, transmittance
 
     ! Terms translating the direct flux entering the layer from above
     ! to the reflected radiation exiting upwards (ref_dir) and the
     ! scattered radiation exiting downwards (trans_dir_diff), along with the
     ! direct unscattered transmission matrix (trans_dir_dir).
-    real(jprb), dimension(config%n_g_sw, 2:nregions, nlev) &
+    real(jprb), dimension(ng, 2:nregions, nlev) &
          &  :: ref_dir, trans_dir_diff, trans_dir_dir
 
     ! As above but for the clear regions; clear and cloudy layers are
     ! separated out so that calc_ref_trans_sw can be called on the
     ! entire clear-sky atmosphere at once
-    real(jprb), dimension(config%n_g_sw, nlev) &
+    real(jprb), dimension(ng, nlev) &
     	 &  :: reflectance_clear, transmittance_clear, &
          &     ref_dir_clear, trans_dir_diff_clear, trans_dir_dir_clear
 
@@ -132,34 +143,34 @@ contains
     ! interface with respect to downwelling diffuse and direct
     ! (respectively) radiation at that interface, where level index =
     ! 1 corresponds to the top-of-atmosphere
-    real(jprb), dimension(config%n_g_sw, nregions, nlev+1) &
+    real(jprb), dimension(ng, nregions, nlev+1) &
          &  :: total_albedo, total_albedo_direct
 
     ! ...equivalent values for clear-skies
-    real(jprb), dimension(config%n_g_sw, nlev+1) &
+    real(jprb), dimension(ng, nlev+1) &
          &  :: total_albedo_clear, total_albedo_clear_direct
 
     ! Total albedo of the atmosphere just below a layer interface
-    real(jprb), dimension(config%n_g_sw, nregions) &
+    real(jprb), dimension(ng, nregions) &
          &  :: total_albedo_below, total_albedo_below_direct
 
     ! Direct downwelling flux below and above an interface between
     ! layers into a plane perpendicular to the direction of the sun
-    real(jprb), dimension(config%n_g_sw, nregions) :: direct_dn
+    real(jprb), dimension(ng, nregions) :: direct_dn
     ! Diffuse equivalents
-    real(jprb), dimension(config%n_g_sw, nregions) :: flux_dn, flux_up
+    real(jprb), dimension(ng, nregions) :: flux_dn, flux_up
 
     ! ...clear-sky equivalent (no distinction between "above/below")
-    real(jprb), dimension(config%n_g_sw) &
+    real(jprb), dimension(ng) &
          &  :: direct_dn_clear, flux_dn_clear, flux_up_clear
 
     ! Clear-sky equivalent, but actually its reciprocal to replace
     ! some divisions by multiplications
-    real(jprb), dimension(config%n_g_sw, nregions) :: inv_denom
+    real(jprb), dimension(ng, nregions) :: inv_denom
 
     ! Identify clear-sky layers, with pseudo layers for outer space
     ! and below the ground, both treated as single-region clear skies
-    logical :: is_clear_sky_layer(0:nlev+1)
+    logical :: is_clear_sky_layer(0:nlev+1), are_clouds_below
 
     ! Scattering optical depth of gas+aerosol and of cloud
     real(jprb) :: scat_od, scat_od_cloud
@@ -170,7 +181,7 @@ contains
     ! Local cosine of solar zenith angle
     real(jprb) :: mu0
 
-    integer :: jcol, jlev, jg, jreg, iband, jreg2, ng
+    integer :: jcol, jlev, jg, jreg, jband, jreg2, jbot, jtop, nlev_cloud
 
     real(jphook) :: hook_handle
 
@@ -180,7 +191,10 @@ contains
     ! Section 1: Prepare general variables and arrays
     ! --------------------------------------------------------
     ! Copy array dimensions to local variables for convenience
-    ng   = config%n_g_sw
+    ! ng   = config%n_g_sw
+
+    ! Initialize to zero to avoid compiler warnings
+    jbot = 0
 
     ! Compute the wavelength-independent region fractions and
     ! optical-depth scalings
@@ -272,49 +286,123 @@ contains
           &  ref_dir_clear, trans_dir_diff_clear, &
           &  trans_dir_dir_clear)
 
-      ! Cloudy layers
-      do jlev = 1,nlev ! Start at top-of-atmosphere
-        if (.not. is_clear_sky_layer(jlev)) then
-          do jreg = 2,nregions
-            do jg = 1,ng
-              ! Mapping from g-point to band
-              iband = config%i_band_from_reordered_g_sw(jg)
-              scat_od = od(jg,jlev,jcol)*ssa(jg,jlev,jcol)
-              scat_od_cloud = od_cloud(iband,jlev,jcol) &
-                   &  * ssa_cloud(iband,jlev,jcol) * od_scaling(jreg,jlev,jcol)
-              ! Add scaled cloud optical depth to clear-sky value
-              od_total(jg,jreg) = od(jg,jlev,jcol) &
-                   &  + od_cloud(iband,jlev,jcol)*od_scaling(jreg,jlev,jcol)
-              ! Compute single-scattering albedo and asymmetry
-              ! factor of gas-cloud combination
-              ssa_total(jg,jreg) = (scat_od+scat_od_cloud) &
-                   &  / od_total(jg,jreg)
-              g_total(jg,jreg) = (scat_od*g(jg,jlev,jcol) &
-                   &         + scat_od_cloud * g_cloud(iband,jlev,jcol)) &
+      ! Cloudy-sky equivalents
+      ! Optimized computations for cloudy sky: batch together consecutively cloudy layers
+      ! For this we need the cloud boundaries i.e. top and bottom indices
+
+      !  jtop = findloc(is_clear_sky_layer(1:nlev), .false.,dim=1) ! returns index of first cloudy layer
+
+      ! findloc not working for nvfortran. manual implementation:
+      jtop = 0
+      do jlev = 1, nlev
+          if (.not.is_clear_sky_layer(jlev)) then
+               jtop = jlev
+               exit
+          end if
+      end do
+      are_clouds_below = jtop > 0
+
+      do while (are_clouds_below)
+        ! Find the bottom of this cloudy layer
+        ! we could already be at the lowest level, then jtop=jbot=nlev and there's only this one cloudy layer to compute
+        if (jtop == nlev) then
+          jbot = nlev
+        else
+          ! otherwise, find the bottom by starting from the top and break if there's a clear-sky layer:
+          ! jbot is above this layer, or the lowest level if clouds reach the surface
+          do jlev = jtop+1,nlev
+            if (is_clear_sky_layer(jlev)) then
+              jbot = jlev-1 ! bottom found, exit loop
+              exit
+            else if (jlev==nlev) then
+              jbot = nlev
+            end if
+          end do
+        end if
+
+        nlev_cloud = jbot - jtop + 1
+        allocate(od_tot_batch(ng,2,jtop:jbot))
+        allocate(ssa_tot_batch(ng,2,jtop:jbot))
+        allocate(g_tot_batch(ng,2,jtop:jbot))
+
+        do jlev = jtop, jbot
+          do jreg = 2, nregions
+            if (ng == config%n_bands_sw) then
+              ! ECCKD, simpler loop indices (can vectorize better)
+              do jg = 1,ng
+                ! Mapping from g-point to band
+                scat_od = od(jg,jlev,jcol)*ssa(jg,jlev,jcol)
+                scat_od_cloud = od_cloud(jg,jlev,jcol) &
+                    &  * ssa_cloud(jg,jlev,jcol) * od_scaling(jreg,jlev,jcol)
+                ! Add scaled cloud optical depth to clear-sky value
+                od_tot_batch(jg,jreg-1,jlev) = od(jg,jlev,jcol) &
+                    &  + od_cloud(jg,jlev,jcol)*od_scaling(jreg,jlev,jcol)
+                ! Compute single-scattering albedo and asymmetry
+                ! factor of gas-cloud combination
+                ssa_tot_batch(jg,jreg-1,jlev) = (scat_od+scat_od_cloud) &
+                    &  / od_tot_batch(jg,jreg-1,jlev)
+                g_tot_batch(jg,jreg-1,jlev) = (scat_od*g(jg,jlev,jcol) &
+                    &         + scat_od_cloud * g_cloud(jg,jlev,jcol)) &
+                    &      / (scat_od + scat_od_cloud)
+              end do
+            else
+              do jg = 1,ng
+                ! Mapping from g-point to band
+                jband = config%i_band_from_reordered_g_sw(jg)
+                scat_od = od(jg,jlev,jcol)*ssa(jg,jlev,jcol)
+                scat_od_cloud = od_cloud(jband,jlev,jcol) &
+                    &  * ssa_cloud(jband,jlev,jcol) * od_scaling(jreg,jlev,jcol)
+                ! Add scaled cloud optical depth to clear-sky value
+                od_tot_batch(jg,jreg-1,jlev) = od(jg,jlev,jcol) &
+                    &  + od_cloud(jband,jlev,jcol)*od_scaling(jreg,jlev,jcol)
+                ! Compute single-scattering albedo and asymmetry
+                ! factor of gas-cloud combination
+                ssa_tot_batch(jg,jreg-1,jlev) = (scat_od+scat_od_cloud) &
+                    &  / od_tot_batch(jg,jreg-1,jlev)
+                g_tot_batch(jg,jreg-1,jlev) = (scat_od*g(jg,jlev,jcol) &
+                   &         + scat_od_cloud * g_cloud(jband,jlev,jcol)) &
                    &      / (scat_od + scat_od_cloud)
-            end do
+              end do
+            end if
+          end do
+        end do
+
+        if (config%do_sw_delta_scaling_with_gases) then
+          ! Apply delta-Eddington scaling to the aerosol-gas(-cloud)
+          ! mixture
+          call delta_eddington(od_tot_batch, ssa_tot_batch, g_tot_batch)
+        end if
+
+        call calc_ref_trans_sw(ng*2*nlev_cloud, &
+          &  mu0, od_tot_batch, ssa_tot_batch, g_tot_batch, &
+          &  reflectance(:,:,jtop:jbot), transmittance(:,:,jtop:jbot), &
+          &  ref_dir(:,:,jtop:jbot), trans_dir_diff(:,:,jtop:jbot), &
+          &  trans_dir_dir(:,:,jtop:jbot))
+
+        deallocate(od_tot_batch, ssa_tot_batch, g_tot_batch)
+
+        ! does another cloudy layer exist?
+        if (jbot /= nlev .and. any(.not. is_clear_sky_layer(jbot+1:nlev))) then
+          ! find the cloud top
+          do jlev = jbot+1, nlev
+              if (.not. is_clear_sky_layer(jlev)) then
+                    jtop = jlev ! top found, exit loop
+                    exit
+              end if
           end do
 
-          if (config%do_sw_delta_scaling_with_gases) then
-            ! Apply delta-Eddington scaling to the aerosol-gas(-cloud)
-            ! mixture
-            call delta_eddington(od_total, ssa_total, g_total)
-          end if
-          ! Both cloudy regions at once
-          call calc_ref_trans_sw(ng*(nregions-1), &
-               &  mu0, od_total, ssa_total, g_total, &
-               &  reflectance(:,:,jlev), transmittance(:,:,jlev), &
-               &  ref_dir(:,:,jlev), trans_dir_diff(:,:,jlev), &
-               &  trans_dir_dir(:,:,jlev))
+          are_clouds_below = .true.
+        else  ! no further cloudy regions below
+          are_clouds_below = .false.
         end if
-      end do
+      end do ! while are_clouds_below
 
       ! --------------------------------------------------------
       ! Section 4: Compute total albedos
       ! --------------------------------------------------------
 
-      total_albedo(:,:,:) = 0.0_jprb
-      total_albedo_direct(:,:,:) = 0.0_jprb
+      total_albedo(:,:,nlev+1) = 0.0_jprb
+      total_albedo_direct(:,:,nlev+1) = 0.0_jprb
 
       ! Copy surface albedos in clear-sky region
       do jg = 1,ng
@@ -354,7 +442,7 @@ contains
             total_albedo_clear(jg,jlev) = reflectance_clear(jg,jlev) &
                  &  + transmittance_clear(jg,jlev) * transmittance_clear(jg,jlev) &
                  &  * total_albedo_clear(jg,jlev+1) * inv_denom(jg,1)
-  
+
             total_albedo_clear_direct(jg,jlev) = ref_dir_clear(jg,jlev) &
                  &  + (trans_dir_dir_clear(jg,jlev)*total_albedo_clear_direct(jg,jlev+1) &
                  &     +trans_dir_diff_clear(jg,jlev)*total_albedo_clear(jg,jlev+1)) &
@@ -402,6 +490,8 @@ contains
           ! transport described by Shonk & Hogan (2008).  Therefore,
           ! the operation we perform is essentially diag(total_albedo)
           ! = matmul(transpose(v_matrix)), diag(total_albedo_below)).
+          total_albedo(:,:,jlev) = 0.0_jprb
+          total_albedo_direct(:,:,jlev) = 0.0_jprb
           do jreg = 1,nregions
             do jreg2 = 1,nregions
               total_albedo(:,jreg,jlev) &
@@ -432,7 +522,7 @@ contains
         direct_dn(:,jreg) = incoming_sw(:,jcol)*region_fracs(jreg,1,jcol)
       end do
       flux_up = direct_dn*total_albedo_direct(:,:,1)
-      
+
       if (config%do_clear) then
         flux_dn_clear = 0.0_jprb
         direct_dn_clear(:) = incoming_sw(:,jcol)
@@ -445,7 +535,7 @@ contains
       if (config%do_clear) then
         flux%sw_up_toa_clear_g(:,jcol) = flux_up_clear
       end if
-      
+
       ! Store the TOA broadband fluxes, noting that there is no
       ! diffuse downwelling at TOA. The intrinsic "sum" command has
       ! been found to be very slow; better performance is found on
@@ -542,9 +632,12 @@ contains
 
         ! ...then the cloudy regions if there are any
         if (is_clear_sky_layer(jlev)) then
-          flux_dn(:,2:nregions)  = 0.0_jprb
-          flux_up(:,2:nregions)  = 0.0_jprb
-          direct_dn(:,2:nregions)= 0.0_jprb
+          ! The following zero initialization is actually slow (4% of runtime with ECCKD), and only strictly speaking necessary
+          ! if either the current and above layer aren't clear-sky (conditional below), because
+          ! we can avoid simply adding zeroes in the broadband reduction later
+          ! flux_dn(:,2:)  = 0.0_jprb
+          ! flux_up(:,2:)  = 0.0_jprb
+          ! direct_dn(:,2:)= 0.0_jprb
         else
           do jreg = 2,nregions
             do jg = 1,ng
@@ -558,9 +651,15 @@ contains
             end do
           end do
         end if
-        
+
         if (.not. (is_clear_sky_layer(jlev) &
              &    .and. is_clear_sky_layer(jlev+1))) then
+          ! Moved from above
+          if (is_clear_sky_layer(jlev)) then
+            flux_dn(:,2:)  = 0.0_jprb
+            flux_up(:,2:)  = 0.0_jprb
+            direct_dn(:,2:)= 0.0_jprb
+          end if
           ! Account for overlap rules in translating fluxes just above
           ! a layer interface to the values just below
           flux_dn = singlemat_x_vec(ng,ng,nregions, &
@@ -577,14 +676,22 @@ contains
         sum_up      = 0.0_jprb
         sum_dn_dir  = 0.0_jprb
         sum_dn_diff = 0.0_jprb
-        do jreg = 1,nregions
+        if (is_clear_sky_layer(jlev) .and. is_clear_sky_layer(jlev+1)) then
           !$omp simd reduction(+:sum_up, sum_dn_diff, sum_dn_dir)
           do jg = 1,ng
-            sum_up      = sum_up      + flux_up(jg,jreg)
-            sum_dn_diff = sum_dn_diff + flux_dn(jg,jreg)
-            sum_dn_dir  = sum_dn_dir  + direct_dn(jg,jreg)
+            sum_up      = sum_up      + flux_up(jg,1)
+            sum_dn_diff = sum_dn_diff + flux_dn(jg,1)
+            sum_dn_dir  = sum_dn_dir  + direct_dn(jg,1)
           end do
-        end do
+
+        else
+          !$omp simd reduction(+:sum_up, sum_dn_diff, sum_dn_dir)
+          do jg = 1,ng
+            sum_up      = sum_up      + flux_up(jg,1) + flux_up(jg,2) + flux_up(jg,3)
+            sum_dn_diff = sum_dn_diff + flux_dn(jg,1) + flux_dn(jg,2) + flux_dn(jg,3)
+            sum_dn_dir  = sum_dn_dir  + direct_dn(jg,1) + direct_dn(jg,2) + direct_dn(jg,3)
+          end do
+        end if
         flux%sw_up(jcol,jlev+1) = sum_up
         flux%sw_dn(jcol,jlev+1) = mu0 * sum_dn_dir + sum_dn_diff
         if (allocated(flux%sw_dn_direct)) then
@@ -643,7 +750,7 @@ contains
           end if
         end if
       end do ! Final loop over levels
-      
+
       ! Store surface spectral fluxes, if required (after the end of
       ! the final loop over levels, the current values of these arrays
       ! will be the surface values)

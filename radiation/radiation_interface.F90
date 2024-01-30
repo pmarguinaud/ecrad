@@ -503,7 +503,7 @@ contains
                &  incoming_sw, flux)
         else if (config%i_solver_sw == ISolverTripleclouds) then
           ! Compute fluxes using the Tripleclouds shortwave solver
-          call solver_tripleclouds_sw(nlev,istartcol,iendcol, &
+          call solver_tripleclouds_sw(config%n_g_sw,nlev,istartcol,iendcol, &
                &  config, single_level, cloud, &
                &  od_sw, ssa_sw, g_sw, od_sw_cloud, ssa_sw_cloud, &
                &  g_sw_cloud, sw_albedo_direct, sw_albedo_diffuse, &
