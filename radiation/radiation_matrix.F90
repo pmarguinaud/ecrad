@@ -111,6 +111,25 @@ contains
 
   end function mat_x_vec
 
+  pure function mat_x_vec_3(ng,A,b)
+
+    integer,    intent(in)                    :: ng
+    real(jprb), intent(in), dimension(ng,3,3) :: A
+    real(jprb), intent(in), dimension(ng,3)   :: b
+    real(jprb),             dimension(ng,3):: mat_x_vec_3
+
+    integer :: jg
+
+    do jg = 1, ng
+      ! both inner and outer loop of the matrix loops j1 and j2 unrolled
+      ! inner loop:            j2=1               j2=2                  j2=3
+      mat_x_vec_3(jg,1) = A(jg,1,1)*b(jg,1) + A(jg,1,2)*b(jg,2) + A(jg,1,3)*b(jg,3) ! j1=1
+      mat_x_vec_3(jg,2) = A(jg,2,1)*b(jg,1) + A(jg,2,2)*b(jg,2) + A(jg,2,3)*b(jg,3) ! j1=2
+      mat_x_vec_3(jg,3) = A(jg,3,1)*b(jg,1) + A(jg,3,2)*b(jg,2) + A(jg,3,3)*b(jg,3) ! j1=3
+    end do
+
+  end function mat_x_vec_3
+
   pure function mat_x_vec_3_lw(ng_lw_in,A,b)
 
     integer,    intent(in)                       :: ng_lw_in
@@ -333,6 +352,22 @@ contains
     end do
 
   end subroutine mat_x_mat_3_lw
+
+  pure function mat_x_mat_6(ng,A,B)
+
+    integer,    intent(in)                    :: ng
+    real(jprb), intent(in), dimension(ng,6,6) :: A, B
+    real(jprb),             dimension(ng,6,6) :: mat_x_mat_6
+    integer    :: j1, j2
+
+    do j2 = 1,6
+      do j1 = 1,6
+        mat_x_mat_6(:,j1,j2) =  A(:,j1,1)*B(:,1,j2) + A(:,j1,2)*B(:,2,j2) + A(:,j1,3)*B(:,3,j2) &
+            &                 + A(:,j1,4)*B(:,4,j2) + A(:,j1,5)*B(:,5,j2) + A(:,j1,6)*B(:,6,j2)
+      end do
+    end do
+
+  end function mat_x_mat_6
 
   !---------------------------------------------------------------------
   ! Treat A as an m-by-m matrix and B as n m-by-m square matrices
@@ -851,6 +886,39 @@ pure subroutine identity_minus_mat_x_mat_3_sw(ng_sw_in,A,B,C)
 
   end function solve_vec_3_lw
 
+  pure function solve_vec_3_ng(ng,A,b)
+    integer,    intent(in)  :: ng
+    real(jprb), intent(in)  :: A(ng,3,3)
+    real(jprb), intent(in)  :: b(ng,3)
+    real(jprb) :: solve_vec_3_ng(ng,3)
+
+    real(jprb), dimension(ng) :: L21, L31, L32
+    real(jprb), dimension(ng) :: U22, U23, U33
+    real(jprb), dimension(ng) :: y2, y3
+
+    ! LU decomposition:
+    !     ( 1        )   (U11 U12 U13)
+    ! A = (L21  1    ) * (    U22 U23)
+    !     (L31 L32  1)   (        U33)
+    L21 = A(:,2,1) / A(:,1,1)
+    L31 = A(:,3,1) / A(:,1,1)
+    U22 = A(:,2,2) - L21*A(:,1,2)
+    U23 = A(:,2,3) - L21*A(:,1,3)
+    L32 =(A(:,3,2) - L31*A(:,1,2)) / U22
+    U33 = A(:,3,3) - L31*A(:,1,3) - L32*U23
+
+    ! Solve Ly = b by forward substitution
+    y2 = b(:,2) - L21*b(:,1)
+    y3 = b(:,3) - L31*b(:,1) - L32*y2
+
+    ! Solve Ux = y by back substitution
+    solve_vec_3_ng(:,3) = y3/U33
+    solve_vec_3_ng(:,2) = (y2 - U23*solve_vec_3_ng(:,3)) / U22
+    solve_vec_3_ng(:,1) = (b(:,1) - A(:,1,2)*solve_vec_3_ng(:,2) &
+        &         - A(:,1,3)*solve_vec_3_ng(:,3)) / A(:,1,1)
+
+  end function solve_vec_3_ng
+
   !---------------------------------------------------------------------
   ! Solve AX=B optimized for 3x3 matrices, using LU factorization and
   ! substitution with no pivoting.
@@ -1003,6 +1071,37 @@ pure subroutine identity_minus_mat_x_mat_3_sw(ng_sw_in,A,B,C)
 
   end subroutine lu_factorization
 
+  pure subroutine lu_factorization_lw(n, A, LU)
+    integer,    intent(in)  :: n
+    real(jprb), intent(in)  :: A(n,6,6)
+    real(jprb), intent(out) :: LU(n,6,6)
+    real(jprb) :: s(n)
+    integer    :: j1, j2, j3
+
+    ! This routine is adapted from an in-place one, so we first copy
+    ! the input into the output.
+    LU = A
+
+    do j2 = 1, 6
+      do j1 = 1, j2-1
+        do j3 = 1, j1-1
+          LU(:,j1,j2) = LU(:,j1,j2) - LU(:,j1,j3) * LU(:,j3,j2)
+        end do
+      end do
+      do j1 = j2, 6
+        do j3 = 1, j2-1
+          LU(:,j1,j2) = LU(:,j1,j2) - LU(:,j1,j3) * LU(:,j3,j2)
+        end do
+      end do
+      if (j2 /= 6) then
+        s = 1.0_jprb / LU(:,j2,j2)
+        do j1 = j2+1, 6
+          LU(:,j1,j2) = LU(:,j1,j2) * s
+        end do
+      end if
+    end do
+
+  end subroutine lu_factorization_lw
 
   !---------------------------------------------------------------------
   ! Treat LU as an LU-factorization of an original matrix A, and
@@ -1035,6 +1134,56 @@ pure subroutine identity_minus_mat_x_mat_3_sw(ng_sw_in,A,B,C)
 
   end subroutine lu_substitution
 
+! Optimized version, overwrite input vector b with output vector x
+  pure subroutine lu_substitution_lw_inplace(n,LU,b) ! (n,LU,b,x)
+    integer,    intent(in) :: n
+    real(jprb), intent(in) :: LU(n,6,6)
+    real(jprb), intent(inout) :: b(n,6)
+    ! real(jprb), intent(out):: x(n,6)
+    integer :: j1, j2
+    ! x = b
+
+    ! First solve Ly=b
+    ! do j2 = 2, 6
+    !   do j1 = 1, j2-1
+    !     b(:,j2) = b(:,j2) - b(:,j1)*LU(:,j2,j1)
+    !   end do
+    ! end do
+    ! j2=2 => j1=1,1
+    b(:,2) = b(:,2) - b(:,1)*LU(:,2,1)
+    ! j2=3 => j1=1,2
+    b(:,3) = b(:,3) - b(:,1)*LU(:,3,1) - b(:,2)*LU(:,3,2)
+    ! j2=4 => j1=1,3
+    b(:,4) = b(:,4) - b(:,1)*LU(:,4,1) - b(:,2)*LU(:,4,2) - b(:,3)*LU(:,4,3)
+    ! j2=5 => j1=1,4
+    b(:,5) = b(:,5) - b(:,1)*LU(:,5,1) - b(:,2)*LU(:,5,2) - b(:,3)*LU(:,5,3) - b(:,4)*LU(:,5,4)
+    ! j2=6 => j1=1,5
+    b(:,6) = b(:,6) - b(:,1)*LU(:,6,1) - b(:,2)*LU(:,6,2) - b(:,3)*LU(:,6,3) - b(:,4)*LU(:,6,4) &
+        & - b(:,5)*LU(:,6,5)
+    ! Now solve Ux=y
+    ! do j2 = 6, 1, -1
+    !   do j1 = j2+1, 6
+    !     b(:,j2) = b(:,j2) - b(:,j1)*LU(:,j2,j1)
+    !   end do
+    !   b(:,j2) = b(:,j2) / LU(:,j2,j2)
+    ! end do
+    ! j2=6 => j1=7,6
+    b(:,6) = b(:,6) / LU(:,6,6)
+    ! j2=5 => j1=6,6
+    b(:,5) = (b(:,5) - b(:,6)*LU(:,5,6)) / LU(:,5,5)
+    ! j2=4 => j1=5,6
+    b(:,4) = ( b(:,4) - b(:,5)*LU(:,4,5) - b(:,6)*LU(:,4,6)) / LU(:,4,4)
+    ! j2=3 => j1=4,6
+    b(:,3) = (b(:,3) - b(:,4)*LU(:,3,4) - b(:,5)*LU(:,3,5) - b(:,6)*LU(:,3,6)) / LU(:,3,3)
+    ! j2=2 => j1=3,6
+    b(:,2) = ( b(:,2) - b(:,3)*LU(:,2,3) - b(:,4)*LU(:,2,4) - b(:,5)*LU(:,2,5) - b(:,6)*LU(:,2,6))  &
+        &   / LU(:,2,2)
+    ! j2=1 => j1=2,6
+    b(:,1) = ( b(:,1) - b(:,2)*LU(:,1,2) - b(:,3)*LU(:,1,3) - b(:,4)*LU(:,1,4) - b(:,5)*LU(:,1,5) &
+        &   - b(:,6)*LU(:,1,6) ) / LU(:,1,1)
+
+  end subroutine lu_substitution_lw_inplace
+
 
   !---------------------------------------------------------------------
   ! Return matrix X where AX=B. LU, A, X, B all consist of n m-by-m
@@ -1057,6 +1206,99 @@ pure subroutine identity_minus_mat_x_mat_3_sw(ng_sw_in,A,B,C)
     end do
 
   end subroutine solve_mat_n
+
+  ! Solve AX=B, where A, X and B consist of ng m-by-m matrices
+  ! To minimize memory use, overwrite B with X, and A is corrupted
+  pure subroutine solve_mat_inplace(n,m,A,B)
+    integer,    intent(in) :: n, m
+    real(jprb), intent(inout) :: A(n,m,m)
+    real(jprb), intent(inout) :: B(n,m,m)
+
+    real(jprb) :: s(n)
+
+    integer :: j1, j2, j3
+
+    ! LU factorization
+    do j2 = 1, m
+      do j1 = 1, j2-1
+        s = A(:,j1,j2)
+        do j3 = 1, j1-1
+          s = s - A(:,j1,j3) * A(:,j3,j2)
+        end do
+        A(:,j1,j2) = s
+      end do
+      do j1 = j2, m
+        s = A(:,j1,j2)
+        do j3 = 1, j2-1
+          s = s - A(:,j1,j3) * A(:,j3,j2)
+        end do
+        A(:,j1,j2) = s
+      end do
+      if (j2 /= m) then
+        s = 1.0_jprb / A(:,j2,j2)
+        do j1 = j2+1, m
+          A(:,j1,j2) = A(:,j1,j2) * s
+        end do
+      end if
+    end do
+
+    ! LU substitution
+    do j3 = 1, m
+      ! First solve Ly=b
+      do j2 = 2, m
+        do j1 = 1, j2-1
+          B(:,j2,j3) = B(:,j2,j3) - B(:,j1,j3)*A(:,j2,j1)
+        end do
+      end do
+      ! Now solve Ux=y  (UB=y)
+      do j2 = m, 1, -1
+        do j1 = j2+1, m
+          B(:,j2,j3) = B(:,j2,j3) - B(:,j1,j3)*A(:,j2,j1)
+        end do
+        B(:,j2,j3) = B(:,j2,j3) / A(:,j2,j2)
+      end do
+    end do
+
+  end subroutine solve_mat_inplace
+
+  pure subroutine solve_mat_3_inplace(ng,A,B)
+    integer,    intent(in)  :: ng
+    real(jprb), intent(in)  :: A(ng,3,3)
+    real(jprb), intent(inout)  :: B(ng,3,3)
+    ! real(jprb), intent(out) :: X(ng_lw,3,3)
+
+    real(jprb), dimension(ng) :: L21, L31, L32
+    real(jprb), dimension(ng) :: U22, U23, U33
+    real(jprb), dimension(ng) :: y2, y3
+
+    integer :: j
+    associate(X=>B)
+
+      !    associate (U11 => A(:,1,1), U12 => A(:,1,2), U13 => A(1,3))
+      ! LU decomposition:
+      !     ( 1        )   (U11 U12 U13)
+      ! A = (L21  1    ) * (    U22 U23)
+      !     (L31 L32  1)   (        U33)
+      L21 = A(:,2,1) / A(:,1,1)
+      L31 = A(:,3,1) / A(:,1,1)
+      U22 = A(:,2,2) - L21*A(:,1,2)
+      U23 = A(:,2,3) - L21*A(:,1,3)
+      L32 =(A(:,3,2) - L31*A(:,1,2)) / U22
+      U33 = A(:,3,3) - L31*A(:,1,3) - L32*U23
+
+      do j = 1,3
+        ! Solve Ly = B(:,:,j) by forward substitution
+        ! y1 = B(:,1,j)
+        y2 = B(:,2,j) - L21*B(:,1,j)
+        y3 = B(:,3,j) - L31*B(:,1,j) - L32*y2
+        ! Solve UX(:,:,j) = y by back substitution
+        X(:,3,j) = y3 / U33
+        X(:,2,j) = (y2 - U23*X(:,3,j)) / U22
+        X(:,1,j) = (B(:,1,j) - A(:,1,2)*X(:,2,j) &
+            &          - A(:,1,3)*X(:,3,j)) / A(:,1,1)
+      end do
+    end associate
+  end subroutine solve_mat_3_inplace
 
   pure subroutine solve_mat_3_sw(ng_sw_in,A,B,X)
     integer,    intent(in)  :: ng_sw_in
@@ -1559,6 +1801,137 @@ pure subroutine identity_minus_mat_x_mat_3_sw(ng_sw_in,A,B,C)
     if (lhook) call dr_hook('radiation_matrix:expm',1,hook_handle)
 
   end subroutine expm
+
+  subroutine expm_lw(n,A)
+
+    use yomhook, only : lhook, dr_hook, jphook
+
+    integer,    intent(in)      :: n
+    real(jprb), intent(inout)   :: A(n,6,6)
+
+    real(jprb), parameter :: theta(3) = (/4.258730016922831e-01_jprb, &
+         &                                1.880152677804762e+00_jprb, &
+         &                                3.925724783138660e+00_jprb/)
+    real(jprb), parameter :: c(8) = (/17297280.0_jprb, 8648640.0_jprb, &
+         &                1995840.0_jprb, 277200.0_jprb, 25200.0_jprb, &
+         &                1512.0_jprb, 56.0_jprb, 1.0_jprb/)
+
+    real(jprb), dimension(n,6,6) :: A2, A4, A6
+    real(jprb), dimension(n,6,6) :: U, V
+    real(jprb), dimension(6,6)   :: temp_in, temp_out
+
+    real(jprb) :: normA(n), sum_column(n)
+    ! real(jprb) :: frac(n)
+    ! real(jprb) :: scaling(n)
+    integer    :: j1, j2, j3, minexpo, nrepeat, jn
+    integer    :: expo(n)
+
+    real(jphook) :: hook_handle
+
+    if (lhook) call dr_hook('radiation_matrix:expm',0,hook_handle)
+
+    normA = 0.0_jprb
+
+    ! Compute the 1-norms of A
+    do j3 = 1,6
+      sum_column(:) = 0.0_jprb
+      do j2 = 1,6
+        do j1 = 1,n
+          sum_column(j1) = sum_column(j1) + abs(A(j1,j2,j3))
+        end do
+      end do
+      do j1 = 1,n
+        if (sum_column(j1) > normA(j1)) then
+          normA(j1) = sum_column(j1)
+        end if
+      end do
+    end do
+
+
+    associate(frac=>normA, scaling=>normA, normdiv=>sum_column)
+
+      normdiv = normA/theta(3)
+      frac = fraction(normdiv)
+      expo = exponent(normdiv)
+      where (frac == 0.5_jprb)
+        expo = expo - 1
+      end where
+      expo = max(expo,0)
+      minexpo = minval(expo)
+
+      ! Scale the input matrices by a power of 2
+      scaling = 2.0_jprb**(-expo)
+      do j3 = 1,6
+        do j2 = 1,6
+          A(:,j2,j3) = A(:,j2,j3) * scaling
+        end do
+      end do
+
+    end associate
+
+    ! Pade approximant of degree 7
+    A2 = mat_x_mat_6(n,A, A)
+    A4 = mat_x_mat_6(n,A2,A2)
+    A6 = mat_x_mat_6(n,A2,A4)
+
+    V = c(8)*A6 + c(6)*A4 + c(4)*A2
+    do j3 = 1,6
+      V(:,j3,j3) = V(:,j3,j3) + c(2)
+    end do
+    U = mat_x_mat_6(n,A,V)
+    V = c(7)*A6 + c(5)*A4 + c(3)*A2
+
+    ! Add a multiple of the identity matrix
+    do j3 = 1,6
+      V(:,j3,j3) = V(:,j3,j3) + c(1)
+    end do
+
+    V = V-U
+    A = 2.0_jprb*U
+
+    call solve_mat_inplace(n,6,V,A)
+
+    ! Add the identity matrix
+    do j3 = 1,6
+      A(:,j3,j3) = A(:,j3,j3) + 1.0_jprb
+    end do
+
+    ! To improve efficiency, square all matrices with the minimum expo first, and then square individual matrices as needed
+    do j1 = 1,minexpo
+      V = mat_x_mat_6(n,A,A)
+      A = V
+    end do
+
+    expo = expo - minexpo
+
+    do j1 = 1,n
+      if (expo(j1) > 0) then
+        nrepeat = expo(j1)
+        ! print *, "jg ", j1, "/", n, " expo", expo(j1)
+        !Square matrix nrepeat times
+        temp_in =  A(j1,:,:)
+
+        ! call repeated_square_6(nrepeat,temp_in,temp_out)
+        do jn = 1,nrepeat
+          do j2 = 1,6
+            do j3 = 1,6
+              temp_out(j3,j2) =  temp_in(j3,1)*temp_in(1,j2) + temp_in(j3,2)*temp_in(2,j2) + &
+                   &      temp_in(j3,3)*temp_in(3,j2) + temp_in(j3,4)*temp_in(4,j2) + &
+                   &      temp_in(j3,5)*temp_in(5,j2) + temp_in(j3,6)*temp_in(6,j2)
+            end do
+          end do
+          if (jn < nrepeat) then
+            temp_in = temp_out
+          end if
+        end do
+
+        A(j1,:,:) = temp_out
+      end if
+    end do
+
+    if (lhook) call dr_hook('radiation_matrix:expm',1,hook_handle)
+
+  end subroutine expm_lw
 
   !---------------------------------------------------------------------
   ! Like expm, but optimized for the shortwave, which has
