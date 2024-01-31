@@ -121,7 +121,6 @@ contains
 
     integer, parameter :: nreg = 3
 
-    integer :: nregActive ! =1 in clear layer, =nreg in a cloudy layer
     integer :: jcol, jlev, jg, jj, jreg, jband, jreg2
     integer :: ng3D ! Number of g-points with small enough gas optical
                     ! depth that 3D effects need to be represented

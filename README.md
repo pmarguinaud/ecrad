@@ -4,6 +4,19 @@ This document last updated 9 June 2022
 
 Robin Hogan <r.j.hogan@ecmwf.int>
 
+----------------------------------------------------------------------
+
+This branch features additions by Peter Ukkonen (<peterukk@gmail.com>):
+
+1. Extensive code optimization described in a [preprint uploaded to ESS](https://doi.org/10.22541/essoar.168298700.07329865/v1).
+This branch has been cleaned up and uses optimized code everywhere (no testable optimizations)
+For further speed-up for 32-term ecCKD models add `NG_SW=32 NG_LW=32`
+2. New gas optics schemes RRTMGP and RRTMGP-NN.
+The implementation, development and testing of RRTMGP-NN is described
+in [a GMD paper](https://doi.org/10.5194/egusphere-2022-1047).
+
+----------------------------------------------------------------------
+
 For more complete information about compilation and usage of ecRad,
 please see the documentation on the
 [ecRad web site](https://confluence.ecmwf.int/display/ECRAD).
@@ -94,7 +107,7 @@ The subdirectories are as follows:
 
 - `include` - automatically generated interface blocks for non-module routines
 
-- `practical` - exercises to get started with ecRad 
+- `practical` - exercises to get started with ecRad
 
 
 ## TO COMPILE
@@ -105,7 +118,7 @@ example.  Ensure you have the Fortran netCDF library installed
 (versions 3 or 4) and that the module file is compatible with your
 Fortran compiler.
 
-2. You can compile the code using 
+2. You can compile the code using
 
        make PROFILE=<prof>
 
@@ -117,20 +130,20 @@ Fortran compiler.
    `Makefile_include.gfortran`. Two additional profiles are provided,
    `ecmwf` which builds on the `gfortran` profile and `uor`
    (University of Reading) which is built on the `pgi` profile.
-   
+
    If the compile is successful then static libraries should appear in
    the `lib` directory, and then the executable `bin/ecrad`.
 
 3. To clean-up, type `make clean`.  To build an unoptimized version
    for debugging, you can do
-   
+
        make PROFILE=<prof> DEBUG=1
-   
+
    or you can specifically override the variables in `Makefile_include.<prof>`
    using, for example
-   
+
        make PROFILE=<prof> OPTFLAGS=-O0 DEBUGFLAGS="-g -pg"
-   
+
    To compile in single precision add `SINGLE_PRECISION=1` to the
    `make` command line.  To compile with the Dr Hook profiling system,
    first install ECMWF's [fiat library]([ecRad web
@@ -138,7 +151,7 @@ Fortran compiler.
    `FIATDIR=/path/to/fiat` to the `make` command line, such that the
    files `$FIATDIR/lib/libfiat.so` and
    `$FIATDIR/module/fiat/yomhook.mod` can be found at build time.
-   
+
 
 ## TO TEST
 

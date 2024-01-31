@@ -43,6 +43,9 @@ module radiation_lw_derivatives
 #define ng ng_lw_in
 #endif
 
+  integer, parameter :: nreg = 3
+
+
 contains
 
   !---------------------------------------------------------------------
@@ -142,7 +145,7 @@ contains
 
   !---------------------------------------------------------------------
   ! Calculation for solvers involving multiple regions and matrices
-  subroutine calc_lw_derivatives_matrix(ng_lw_in, nlev, nreg, icol, transmittance, &
+  subroutine calc_lw_derivatives_matrix(ng_lw_in, nlev, nreg_in, icol, transmittance, &
        &                                u_matrix, flux_up_surf, lw_derivatives)
 
     use parkind1, only           : jprb
@@ -155,7 +158,7 @@ contains
     ! Inputs
     integer,    intent(in) :: ng_lw_in   ! number of spectral intervals
     integer,    intent(in) :: nlev ! number of levels
-    integer,    intent(in) :: nreg ! number of regions
+    integer,    intent(in) :: nreg_in ! number of regions
     integer,    intent(in) :: icol ! Index of column for output
     real(jprb), intent(in) :: transmittance(ng,nreg,nreg,nlev)
     real(jprb), intent(in) :: u_matrix(nreg,nreg,nlev+1) ! Upward overlap matrix
@@ -238,7 +241,7 @@ contains
   ! Calculation for solvers involving multiple regions but no 3D
   ! effects: the difference from calc_lw_derivatives_matrix is that transmittance
   ! has one fewer dimensions
-  subroutine calc_lw_derivatives_region(ng_lw_in, nlev, nreg, icol, transmittance, &
+  subroutine calc_lw_derivatives_region(ng_lw_in, nlev, nreg_in, icol, transmittance, &
        &                                u_matrix, flux_up_surf, lw_derivatives)
 
     use parkind1, only           : jprb
@@ -251,7 +254,7 @@ contains
     ! Inputs
     integer,    intent(in) :: ng_lw_in   ! number of spectral intervals
     integer,    intent(in) :: nlev ! number of levels
-    integer,    intent(in) :: nreg ! number of regions
+    integer,    intent(in) :: nreg_in ! number of regions
     integer,    intent(in) :: icol ! Index of column for output
     real(jprb), intent(in) :: transmittance(ng,nreg,nlev)
     real(jprb), intent(in) :: u_matrix(nreg,nreg,nlev+1) ! Upward overlap matrix

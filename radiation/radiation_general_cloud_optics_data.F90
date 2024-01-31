@@ -243,7 +243,7 @@ contains
   !---------------------------------------------------------------------
   ! Add the optical properties of a particular cloud type to the
   ! accumulated optical properties of all cloud types
-  subroutine add_optical_properties(this, ng, nlev, ncol, &
+  subroutine add_optical_properties(this, ng_in, nlev, ncol, &
        &                            cloud_fraction, &
        &                            water_path, effective_radius, &
        &                            od, scat_od, scat_asymmetry)
@@ -252,13 +252,20 @@ contains
 
     class(general_cloud_optics_type), intent(in) :: this
 
+    ! Allow size of inner dimension (number of g-points) to be known at compile time
+    ! Since this kernel is used for both SW and LW we also got to make sure ng_sw = ng_lw
+#if defined NG_SW && defined NG_LW && NG_SW==NG_LW
+    integer, parameter :: ng = NG_SW
+#else
+#define ng ng_in
+#endif
     ! Number of g points, levels and columns
-    integer, intent(in) :: ng, nlev, ncol
+    integer, intent(in) :: ng_in, nlev, ncol
 
     ! Properties of present cloud type, dimensioned (ncol,nlev)
-    real(jprb), intent(in) :: cloud_fraction(:,:)
-    real(jprb), intent(in) :: water_path(:,:)       ! kg m-2
-    real(jprb), intent(in) :: effective_radius(:,:) ! m
+    real(jprb), intent(in) :: cloud_fraction(ncol,nlev)
+    real(jprb), intent(in) :: water_path(ncol,nlev)       ! kg m-2
+    real(jprb), intent(in) :: effective_radius(ncol,nlev) ! m
 
     ! Optical properties which are additive per cloud type,
     ! dimensioned (ng,nlev,ncol)
@@ -367,7 +374,7 @@ contains
 
     real(jprb) :: effective_radius(this%n_effective_radius)
     integer :: ire
-    
+
     real(jphook) :: hook_handle
 
     if (lhook) call dr_hook('radiation_general_cloud_optics_data:save',0,hook_handle)
@@ -402,17 +409,17 @@ contains
     do ire = 1,this%n_effective_radius
       effective_radius(ire) = this%effective_radius_0 + this%d_effective_radius*(ire-1)
     end do
-    
+
     ! Write variables
     call out_file%put("effective_radius", effective_radius)
     call out_file%put("mass_extinction_coefficient", this%mass_ext)
     call out_file%put("single_scattering_albedo", this%ssa)
     call out_file%put("asymmetry_factor", this%asymmetry)
-    
+
     call out_file%close()
 
     if (lhook) call dr_hook('radiation_general_cloud_optics_data:save',1,hook_handle)
 
   end subroutine save_general_cloud_optics_data
-  
+
 end module radiation_general_cloud_optics_data

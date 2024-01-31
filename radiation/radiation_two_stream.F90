@@ -52,7 +52,7 @@ module radiation_two_stream
   ! Uncomment the following to turn Dr Hook on.
 !#define DO_DR_HOOK_TWO_STREAM
 
-  private :: OdThresholdLw, Half, One, Two, KMinSw, KMinLw
+  private :: KMinSw, KMinLw
 
 contains
 

@@ -63,7 +63,7 @@ contains
     real(jphook) :: hook_handle
 
     if (lhook) call dr_hook('radiation_save:save_fluxes',0,hook_handle)
-    
+
     if (present(iverbose)) then
       i_local_verbose = iverbose
     else
@@ -202,7 +202,7 @@ contains
                &   long_name="Spectral downwelling clear-sky longwave flux")
         end if
       end if
-   
+
       if (config%do_toa_spectral_flux) then
         call out_file%define_variable("spectral_flux_up_lw_toa", &
              &   dim2_name="column", dim1_name="band_lw", units_str="W m-2", &
@@ -213,7 +213,7 @@ contains
                &   long_name="Spectral upwelling clear-sky longwave flux at top-of-atmosphere")
         end if
       end if
-   
+
       if (config%do_canopy_fluxes_lw) then
         call out_file%define_variable("canopy_flux_dn_lw_surf", &
              &   dim2_name="column", dim1_name="canopy_band_lw", units_str=lw_units_str, &
@@ -315,7 +315,7 @@ contains
                &   long_name="Spectral upwelling clear-sky shortwave flux at top-of-atmosphere")
         end if
       end if
-   
+
       if (config%do_canopy_fluxes_sw) then
         call out_file%define_variable("canopy_flux_dn_diffuse_sw_surf", &
              &   dim2_name="column", dim1_name="canopy_band_sw", units_str="W m-2", &
@@ -326,7 +326,7 @@ contains
       end if
 
     end if
-   
+
     if (config%do_lw .and. config%do_clouds) then
       call out_file%define_variable("cloud_cover_lw", &
            &  dim1_name="column", units_str="1", &
@@ -373,7 +373,7 @@ contains
                &   do_transp=.false.)
         end if
       end if
-      
+
       if (config%do_canopy_fluxes_lw) then
         call out_file%put("canopy_flux_dn_lw_surf", flux%lw_dn_surf_canopy, &
              &            do_transp = .false.)
@@ -433,7 +433,7 @@ contains
                &   do_transp=.false.)
         end if
       end if
-      
+
       if (config%do_canopy_fluxes_sw) then
         call out_file%put("canopy_flux_dn_diffuse_sw_surf", flux%sw_dn_diffuse_surf_canopy, &
              &            do_transp = .false.)
@@ -456,7 +456,7 @@ contains
     if (lhook) call dr_hook('radiation_save:save_fluxes',1,hook_handle)
 
   end subroutine save_fluxes
-  
+
 
   !---------------------------------------------------------------------
   ! Save IFS-style net fluxes in "flux" to NetCDF file_name, plus
@@ -492,7 +492,7 @@ contains
     real(jphook) :: hook_handle
 
     if (lhook) call dr_hook('radiation_save:save_net_fluxes',0,hook_handle)
-    
+
     if (present(iverbose)) then
       i_local_verbose = iverbose
     else
@@ -599,7 +599,7 @@ contains
              &  units_str="1", &
              &  long_name="Derivative of upwelling LW flux w.r.t. surface value")
       end if
-   
+
       if (config%do_canopy_fluxes_lw) then
         call out_file%define_variable("canopy_flux_dn_lw_surf", &
              &   dim2_name="column", dim1_name="canopy_band_lw", units_str=lw_units_str, &
@@ -643,7 +643,7 @@ contains
                &   long_name="Surface downwelling clear-sky direct shortwave flux")
         end if
       end if
-   
+
       if (config%do_canopy_fluxes_sw) then
         call out_file%define_variable("canopy_flux_dn_diffuse_sw_surf", &
              &   dim2_name="column", dim1_name="canopy_band_sw", units_str="W m-2", &
@@ -654,7 +654,7 @@ contains
       end if
 
     end if
-   
+
     ! Write variables
 
     call out_file%put("pressure_hl", thermodynamics%pressure_hl)
@@ -708,7 +708,7 @@ contains
     if (lhook) call dr_hook('radiation_save:save_net_fluxes',1,hook_handle)
 
   end subroutine save_net_fluxes
-  
+
 
   !---------------------------------------------------------------------
   ! Save intermediate radiative properties, specifically the
@@ -813,13 +813,13 @@ contains
     end if
 
     if (config%do_lw) then
-      call out_file%define_dimension("gpoint_lw", config%n_g_lw) 
+      call out_file%define_dimension("gpoint_lw", config%n_g_lw)
       if (config%do_clouds) then
         call out_file%define_dimension("band_lw", config%n_bands_lw)
       end if
     end if
     if (config%do_sw) then
-      call out_file%define_dimension("gpoint_sw", config%n_g_sw) 
+      call out_file%define_dimension("gpoint_sw", config%n_g_sw)
       if (config%do_clouds) then
         call out_file%define_dimension("band_sw", config%n_bands_sw)
       end if
@@ -895,7 +895,7 @@ contains
         end if
       end if ! do_clouds
     end if ! do_lw
-    
+
     if (config%do_sw) then
       call out_file%define_variable("incoming_sw", &
            &  dim2_name="column", dim1_name="gpoint_sw", &
@@ -930,7 +930,7 @@ contains
              &  units_str="1", long_name="Cloud shortwave asymmetry factor")
       end if
     end if
-   
+
     if (config%do_clouds) then
       if (allocated(cloud%fractional_std)) then
         call out_file%define_variable("fractional_std", &
@@ -971,13 +971,13 @@ contains
       call out_file%put("lw_emissivity", 1.0_jprb - lw_albedo, do_transp=.false.)
       call out_file%put("planck_hl", planck_hl)
       call out_file%put("lw_emission", lw_emission, do_transp=.false.)
-      
+
       call out_file%put("od_lw", od_lw)
       if (config%do_lw_aerosol_scattering) then
         call out_file%put("ssa_lw", ssa_lw)
         call out_file%put("asymmetry_lw", g_lw)
       end if
-      
+
       if (config%do_clouds) then
         call out_file%put("od_lw_cloud", od_lw_cloud)
         if (config%do_lw_cloud_scattering) then
@@ -986,21 +986,21 @@ contains
         end if
       end if
     end if
-    
+
     if (config%do_sw) then
       call out_file%put("incoming_sw", incoming_sw, do_transp=.false.)
-      
+
       call out_file%put("od_sw", od_sw)
       call out_file%put("ssa_sw", ssa_sw)
       call out_file%put("asymmetry_sw", g_sw)
-      
+
       if (config%do_clouds) then
         call out_file%put("od_sw_cloud", od_sw_cloud)
         call out_file%put("ssa_sw_cloud", ssa_sw_cloud)
         call out_file%put("asymmetry_sw_cloud", g_sw_cloud)
       end if
     end if
-    
+
     if (config%do_clouds) then
       if (allocated(cloud%fractional_std)) then
         call out_file%put("fractional_std", cloud%fractional_std(istartcol:iendcol,:))
@@ -1017,9 +1017,9 @@ contains
     call out_file%close()
 
     !$OMP END CRITICAL
-    
+
   end subroutine save_radiative_properties
-  
+
 
   !---------------------------------------------------------------------
   ! Save inputs to the radiation scheme
@@ -1072,8 +1072,10 @@ contains
     ncol = size(thermodynamics%pressure_hl,1)
     nlev = size(thermodynamics%pressure_hl,2)
     nlev = nlev - 1
-    
+
     do_aerosol = config%use_aerosols .and. present(aerosol)
+
+    !$OMP CRITICAL
 
     ! Open the file
     call out_file%create(trim(file_name), iverbose=i_local_verbose)
@@ -1140,7 +1142,7 @@ contains
       call out_file%define_variable("sw_albedo", &
            &   dim2_name="column", dim1_name="sw_albedo_band", &
            &   units_str="1", long_name="Shortwave surface albedo")
-      
+
     end if
     call out_file%define_variable("lw_emissivity", &
          &   dim2_name="column", dim1_name="lw_emissivity_band", &
@@ -1300,8 +1302,10 @@ contains
     ! Close the file
     call out_file%close()
 
+    !$OMP END CRITICAL
+
     if (lhook) call dr_hook('radiation_save:save_inputs',1,hook_handle)
-    
+
   end subroutine save_inputs
 
 
@@ -1343,7 +1347,7 @@ contains
     real(jphook) :: hook_handle
 
     if (lhook) call dr_hook('radiation_save:save_sw_diagnostics',0,hook_handle)
-    
+
     if (present(iverbose)) then
       i_local_verbose = iverbose
     else
@@ -1363,7 +1367,7 @@ contains
     call out_file%define_dimension("column", ncol)
     nwav = size(wavelength_bound)-1
     call out_file%define_dimension("wavelength", nwav)
-    
+
     ! Put global attributes
     call out_file%put_global_attributes( &
          &   title_str="Shortwave spectral diagnostics from the ecRad offline radiation model", &
@@ -1439,7 +1443,7 @@ contains
 #else
 #define MY_MATMUL matmul
 #endif
-    
+
     flux_out = MY_MATMUL(mapping, flux%sw_dn_surf_band)
     call out_file%put("flux_dn_sw_surf", flux_out)
     flux_out = MY_MATMUL(mapping, flux%sw_dn_direct_surf_band)
@@ -1467,9 +1471,9 @@ contains
     end if
 
     call out_file%close()
-    
+
     if (lhook) call dr_hook('radiation_save:save_sw_diagnostics',1,hook_handle)
 
   end subroutine save_sw_diagnostics
-  
+
 end module radiation_save
