@@ -19,6 +19,8 @@ REAL(KIND=JPRB) :: SFLUXREF(JPG), RAYL(JPG)
 
 REAL(KIND=JPRB) :: SFLUXREFC(NG26), RAYLC(NG26)
 
+!$ACC DECLARE CREATE(SFLUXREFC, RAYLC)
+
 !     -----------------------------------------------------------------
 !        * E.C.M.W.F. PHYSICS PACKAGE ** RRTM SW RADIATION **
 
@@ -33,4 +35,3 @@ REAL(KIND=JPRB) :: SFLUXREFC(NG26), RAYLC(NG26)
 ! RAYLC   : REAL     Reduced g-point array for RAYL
 !     -----------------------------------------------------------------
 END MODULE YOESRTA26
-

@@ -8,7 +8,7 @@ SUBROUTINE SRTM_CMBGB16
 !  The subroutines CMBGB16->CMBGB29 input the absorption coefficient
 !  data for each band, which are defined for 16 g-points and 14 spectral
 !  bands. The data are combined with appropriate weighting following the
-!  g-point mapping arrays specified in RRTMG_SW_INIT.  Solar source 
+!  g-point mapping arrays specified in RRTMG_SW_INIT.  Solar source
 !  function data in array SFLUXREF are combined without weighting.  All
 !  g-point reduced data are put into new arrays for use in RRTMG_SW.
 
@@ -99,7 +99,8 @@ DO IGC = 1,NGC(1)
   SFLUXREFC(IGC) = ZSUMF
 ENDDO
 
+!$ACC UPDATE DEVICE(KAC, KBC, SELFREFC, FORREFC, SFLUXREFC)
+
 !     -----------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('SRTM_CMBGB16',1,ZHOOK_HANDLE)
 END SUBROUTINE SRTM_CMBGB16
-

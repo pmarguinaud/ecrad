@@ -28,6 +28,9 @@ REAL(KIND=JPRB) :: FORREF(4,NG9)
 
 EQUIVALENCE (KA(1,1,1,1),ABSA(1,1)),(KB(1,13,1),ABSB(1,1))
 
+!$ACC DECLARE CREATE(FRACREFA, FRACREFB, KA, ABSA, KB, ABSB, KA_MN2O, KB_MN2O, &
+!$ACC                SELFREF, FORREF)
+
 !     -----------------------------------------------------------------
 !        * E.C.M.W.F. PHYSICS PACKAGE ** RRTM LW RADIATION **
 
@@ -35,21 +38,21 @@ EQUIVALENCE (KA(1,1,1,1),ABSA(1,1)),(KB(1,13,1),ABSB(1,1))
 
 !  NAME     TYPE     PURPOSE
 !  ----   : ----   : ---------------------------------------------------
-! ABSA    : REAL     absorption coefficient of major absorber for M reference tropospheric 
-!                    pressures and N reference tropospheric temperatures 
+! ABSA    : REAL     absorption coefficient of major absorber for M reference tropospheric
+!                    pressures and N reference tropospheric temperatures
 ! ABSB    : REAL     absorption coefficient of secondary absorber for M reference stratospheric
-!                    pressures and N reference stratospheric temperatures 
+!                    pressures and N reference stratospheric temperatures
 ! ABSN2O  : REAL     absorption coefficient for N2O
 ! CH4REF  : REAL     reference profile for CH4
 ! ETAREF  : REAL     reference eta profile
 ! FRACREFA: REAL     distance from r and T reference tabulated points (troposphere)
 ! FRACREFB: REAL     distance from r and T reference tabulated points (stratosphere)
 ! H2OREF  : REAL     reference profile for H2O
-! KA      : REAL     absorption coefficient of major absorber (equiv. to ABSA)   
-! KB      : REAL     absorption coefficient of secondary absorber (equiv. to ABSB)   
+! KA      : REAL     absorption coefficient of major absorber (equiv. to ABSA)
+! KB      : REAL     absorption coefficient of secondary absorber (equiv. to ABSB)
 ! N2OREF  : REAL     reference profile for N2O
 ! SELFREF : REAL     self broadening coefficient for water vapour
-! STRRAT  : REAL     weighting factors for the transition between tropospheric 
+! STRRAT  : REAL     weighting factors for the transition between tropospheric
 !                    and stratospheric computations
 !     -----------------------------------------------------------------
 END MODULE YOERRTA9

@@ -15,9 +15,9 @@ SAVE
 
 INTEGER(KIND=JPIM), PARAMETER :: JPG = 16, NG24 = 16
 
-REAL(KIND=JPRB) :: KA(9,5,13,JPG) 
+REAL(KIND=JPRB) :: KA(9,5,13,JPG)
 REAL(KIND=JPRB) :: KB(5,13:59,JPG)
-REAL(KIND=JPRD) :: KA_D(9,5,13,JPG) 
+REAL(KIND=JPRD) :: KA_D(9,5,13,JPG)
 REAL(KIND=JPRD) :: KB_D(5,13:59,JPG)
 REAL(KIND=JPRB) :: SELFREF(10,JPG),FORREF(3,JPG)
 REAL(KIND=JPRB) :: SFLUXREF(JPG,9)
@@ -33,6 +33,9 @@ REAL(KIND=JPRB) :: ABSO3AC(NG24), ABSO3BC(NG24), RAYLAC(NG24,9), RAYLBC(NG24)
 
 !EQUIVALENCE (KA(1,1,1,1),ABSA(1,1)), (KB(1,13,1),ABSB(1,1))
 EQUIVALENCE (KAC(1,1,1,1),ABSA(1,1)), (KBC(1,13,1),ABSB(1,1))
+
+!$ACC DECLARE CREATE(KAC, ABSA, KBC, ABSB, SELFREFC, FORREFC, SFLUXREFC, &
+!$ACC                ABSO3AC, ABSO3BC, RAYLAC, RAYLBC)
 
 !     -----------------------------------------------------------------
 !        * E.C.M.W.F. PHYSICS PACKAGE ** RRTM SW RADIATION **
@@ -50,8 +53,8 @@ EQUIVALENCE (KAC(1,1,1,1),ABSA(1,1)), (KBC(1,13,1),ABSB(1,1))
 ! ABSO3A  : REAL     O3 absorption coefficient in first part of band
 ! ABSO3B  : REAL     O3 absorption coefficient in second part of band
 ! RAYLA   : REAL     Rayleigh scattering parameter in first part of band
-! RAYLB   : REAL     Rayleigh scattering parameter in second part of band   
-! STRRAT  : REAL     weighting factor for the transition between tropospheric 
+! RAYLB   : REAL     Rayleigh scattering parameter in second part of band
+! STRRAT  : REAL     weighting factor for the transition between tropospheric
 !                    and stratospheric computations
 ! LAYREFFR: INTEGER  reference level for the transition
 ! KAC     : REAL     Reduced g-point array for KA
@@ -65,4 +68,3 @@ EQUIVALENCE (KAC(1,1,1,1),ABSA(1,1)), (KBC(1,13,1),ABSB(1,1))
 ! RAYLBC  : REAL     Reduced g-point array for RAYLB
 !     -----------------------------------------------------------------
 END MODULE YOESRTA24
-

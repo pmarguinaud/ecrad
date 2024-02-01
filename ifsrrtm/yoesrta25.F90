@@ -15,8 +15,8 @@ SAVE
 
 INTEGER(KIND=JPIM), PARAMETER :: JPG = 16, NG25 = 16
 
-REAL(KIND=JPRB) :: KA(5,13,JPG) 
-REAL(KIND=JPRD) :: KA_D(5,13,JPG) 
+REAL(KIND=JPRB) :: KA(5,13,JPG)
+REAL(KIND=JPRD) :: KA_D(5,13,JPG)
 REAL(KIND=JPRB) :: SFLUXREF(JPG)
 REAL(KIND=JPRB) :: RAYL(JPG), ABSO3A(JPG), ABSO3B(JPG)
 INTEGER(KIND=JPIM) :: LAYREFFR
@@ -27,6 +27,8 @@ REAL(KIND=JPRB) :: RAYLC(NG25), ABSO3AC(NG25), ABSO3BC(NG25)
 
 !EQUIVALENCE (KA(1,1,1),ABSA(1,1))
 EQUIVALENCE (KAC(1,1,1),ABSA(1,1))
+
+!$ACC DECLARE CREATE(KAC, ABSA, SFLUXREFC, RAYLC, ABSO3AC, ABSO3BC)
 
 !     -----------------------------------------------------------------
 !        * E.C.M.W.F. PHYSICS PACKAGE ** RRTM SW RADIATION **
@@ -49,4 +51,3 @@ EQUIVALENCE (KAC(1,1,1),ABSA(1,1))
 ! ABSO3BC : REAL     Reduced g-point array for ABSO3B
 !     -----------------------------------------------------------------
 END MODULE YOESRTA25
-

@@ -25,6 +25,7 @@ INTEGER(KIND=JPIM), DIMENSION(14)  :: NGC, NGS
 REAL(KIND=JPRB), DIMENSION(16)  :: WT, WTSM
 REAL(KIND=JPRB), DIMENSION(224) :: RWGT
 
+!$ACC DECLARE CREATE(NSPA, NSPB, PREFLOG, TREF, NGC)
 
 ! Use for 56 g-points
 !INTEGER(KIND=JPIM), DIMENSION(56) :: NGBSW, NGN
@@ -44,7 +45,7 @@ REAL(KIND=JPRB), DIMENSION(224) :: RWGT
 !  NG     : INTEGER : Number of k-coefficients in spectral intervals
 !  NSPA   : INTEGER :
 !  NSPB   : INTEGER :
-! NMPSRTM : INTEGER : MAPPING INDICES FOR 6-SPECTRAL INT. SURFACE ALBEDO 
+! NMPSRTM : INTEGER : MAPPING INDICES FOR 6-SPECTRAL INT. SURFACE ALBEDO
 ! WAVENUM1: REAL    : Lower wavenumber spectral limit
 ! WAVENUM2: REAL    : Higher wavenumber spectral limit
 ! DELWAVE : REAL    : Spectral interval width
@@ -59,10 +60,9 @@ REAL(KIND=JPRB), DIMENSION(224) :: RWGT
 !  WT     : REAL    : RRTM weights for 16 g-points.
 !  WTSUM  : REAL    : Sum of the weights
 !  RWGT   : REAL    :
-! 
-!  NGN    : INTEGER : The number of original g-points that are combined 
+!
+!  NGN    : INTEGER : The number of original g-points that are combined
 !                     to make each new g-point in each band.
 !  NGBSW  : INTEGER : The band index for each new g-point.
 !     -----------------------------------------------------------------
 END MODULE YOESRTWN
-

@@ -15,8 +15,8 @@ SAVE
 
 INTEGER(KIND=JPIM), PARAMETER :: JPG = 16, NG23 = 16
 
-REAL(KIND=JPRB) :: KA(5,13,JPG)   
-REAL(KIND=JPRD) :: KA_D(5,13,JPG)   
+REAL(KIND=JPRB) :: KA(5,13,JPG)
+REAL(KIND=JPRD) :: KA_D(5,13,JPG)
 REAL(KIND=JPRB) :: SELFREF(10,JPG),FORREF(3,JPG)
 REAL(KIND=JPRB) :: SFLUXREF(JPG)  ,RAYL(JPG)
 REAL(KIND=JPRB) :: GIVFAC
@@ -28,6 +28,9 @@ REAL(KIND=JPRB) :: SFLUXREFC(NG23)  ,RAYLC(NG23)
 
 !EQUIVALENCE (KA(1,1,1),ABSA(1,1))
 EQUIVALENCE (KAC(1,1,1),ABSA(1,1))
+
+!$ACC DECLARE CREATE(KAC, ABSA, SELFREFC, FORREFC, SFLUXREFC, RAYLC)
+
 
 !     -----------------------------------------------------------------
 !        * E.C.M.W.F. PHYSICS PACKAGE ** RRTM SW RADIATION **
@@ -52,4 +55,3 @@ EQUIVALENCE (KAC(1,1,1),ABSA(1,1))
 ! RAYLC   : REAL     Reduced g-point array for RAYL
 !     -----------------------------------------------------------------
 END MODULE YOESRTA23
-

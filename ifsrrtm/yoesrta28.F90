@@ -15,9 +15,9 @@ SAVE
 
 INTEGER(KIND=JPIM), PARAMETER :: JPG = 16, NG28 = 16
 
-REAL(KIND=JPRB) :: KA(9,5,13,JPG)   
+REAL(KIND=JPRB) :: KA(9,5,13,JPG)
 REAL(KIND=JPRB) :: KB(5,5,13:59,JPG)
-REAL(KIND=JPRD) :: KA_D(9,5,13,JPG)   
+REAL(KIND=JPRD) :: KA_D(9,5,13,JPG)
 REAL(KIND=JPRD) :: KB_D(5,5,13:59,JPG)
 REAL(KIND=JPRB) :: SFLUXREF(JPG,5)
 REAL(KIND=JPRB) :: RAYL              ,STRRAT
@@ -29,6 +29,8 @@ REAL(KIND=JPRB) :: SFLUXREFC(NG28,5)
 
 !EQUIVALENCE (KA(1,1,1,1),ABSA(1,1)), (KB(1,1,13,1),ABSB(1,1))
 EQUIVALENCE (KAC(1,1,1,1),ABSA(1,1)), (KBC(1,1,13,1),ABSB(1,1))
+
+!$ACC DECLARE CREATE(KAC, ABSA, KBC, ABSB, SFLUXREFC)
 
 !     -----------------------------------------------------------------
 !        * E.C.M.W.F. PHYSICS PACKAGE ** RRTM SW RADIATION **
@@ -42,7 +44,7 @@ EQUIVALENCE (KAC(1,1,1,1),ABSA(1,1)), (KBC(1,1,13,1),ABSB(1,1))
 ! KB      : REAL     absorption coefficient of secondary absorber
 ! SFLUXREF: REAL     Incident solar radiation in the spectral interval
 ! RAYL    : REAL     Rayleigh scattering parameter
-! STRRAT  : REAL     weighting factor for the transition between tropospheric 
+! STRRAT  : REAL     weighting factor for the transition between tropospheric
 !                    and stratospheric computations
 ! LAYREFFR: INTEGER  reference level for the transition
 ! KAC     : REAL     Reduced g-point array for KA
@@ -50,4 +52,3 @@ EQUIVALENCE (KAC(1,1,1,1),ABSA(1,1)), (KBC(1,1,13,1),ABSB(1,1))
 !SFLUXREFC: REAL     Reduced g-point array for SFLUXREF
 !     -----------------------------------------------------------------
 END MODULE YOESRTA28
-

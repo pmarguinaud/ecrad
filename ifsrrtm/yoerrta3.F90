@@ -25,6 +25,9 @@ REAL(KIND=JPRB) :: FORREF(4,NG3)
 
 EQUIVALENCE (KA(1,1,1,1),ABSA(1,1)),(KB(1,1,13,1),ABSB(1,1))
 
+!$ACC DECLARE CREATE(FRACREFA, FRACREFB, KA_MN2O, KB_MN2O, KA, ABSA, KB, ABSB, &
+!$ACC                SELFREF, FORREF)
+
 !     ------------------------------------------------------------------
 !        * E.C.M.W.F. PHYSICS PACKAGE ** RRTM LW RADIATION **
 
@@ -32,10 +35,10 @@ EQUIVALENCE (KA(1,1,1,1),ABSA(1,1)),(KB(1,1,13,1),ABSB(1,1))
 
 !  NAME     TYPE     PURPOSE
 !  ----   : ----   : ---------------------------------------------------
-! ABSA    : REAL     absorption coefficient of major absorber for M reference tropospheric 
-!                    pressures and N reference tropospheric temperatures 
+! ABSA    : REAL     absorption coefficient of major absorber for M reference tropospheric
+!                    pressures and N reference tropospheric temperatures
 ! ABSB    : REAL     absorption coefficient of secondary absorber for M reference stratospheric
-!                    pressures and N reference stratospheric temperatures 
+!                    pressures and N reference stratospheric temperatures
 ! ABSN2OA : REAL     absorption coefficient for tropospheric N2O
 ! ABSN2OB : REAL     absorption coefficient for stratospheric N2O
 ! CO2REF  : REAL     refrence CO2 profile
@@ -43,11 +46,11 @@ EQUIVALENCE (KA(1,1,1,1),ABSA(1,1)),(KB(1,1,13,1),ABSB(1,1))
 ! FRACREFA: REAL     distance from r and T reference tabulated points (troposphere)
 ! FRACREFB: REAL     distance from r and T reference tabulated points (stratosphere)
 ! H2OREF  : REAL     reference H2O profile
-! KA      : REAL     absorption coefficient of major absorber (equiv. to ABSA)   
-! KB      : REAL     absorption coefficient of secondary absorber (equiv. to ABSB)   
+! KA      : REAL     absorption coefficient of major absorber (equiv. to ABSA)
+! KB      : REAL     absorption coefficient of secondary absorber (equiv. to ABSB)
 ! N2OREF  : REAL     reference N2O profile
 ! SELFREF : REAL     self broadening coefficient for water vapour
-! STRRAT  : REAL     weighting factor for the transition between tropospheric 
+! STRRAT  : REAL     weighting factor for the transition between tropospheric
 !                    and stratospheric computations
 !     -----------------------------------------------------------------
 END MODULE YOERRTA3

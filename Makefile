@@ -175,7 +175,7 @@ libifsrrtm: libifsaux
 librrtmgp: libifsaux
 	cd rrtmgp-nn && $(MAKE)
 
-libradiation: libutilities libifsaux
+libradiation: libifsrrtm libutilities libifsaux
 	cd radiation && $(MAKE)
 
 driver: libifsaux libifsrrtm librrtmgp libutilities libradiation

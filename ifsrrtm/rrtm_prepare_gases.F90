@@ -4,7 +4,7 @@ SUBROUTINE RRTM_PREPARE_GASES &
  &  PTH  , PT  , &
  &  PQ   , PCO2 , PCH4, PN2O  , PNO2, PC11, PC12, PC22, PCL4, POZN, &
  &  PCOLDRY, PWBRODL, PWKL, PWX , &
- &  PAVEL  , PTAVEL , PZ  , PTZ , KREFLECT)  
+ &  PAVEL  , PTAVEL , PZ  , PTZ , KREFLECT)
 
 !----compiled for Cray with -h nopattern----
 
@@ -21,16 +21,16 @@ SUBROUTINE RRTM_PREPARE_GASES &
 USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOMCST   , ONLY : RG
-USE PARRRTM  , ONLY : JPXSEC, JPINPX  
+USE PARRRTM  , ONLY : JPXSEC, JPINPX
 USE YOMDYNCORE,ONLY : RPLRG
 
 !------------------------------Arguments--------------------------------
 
 IMPLICIT NONE
 
-INTEGER(KIND=JPIM),INTENT(IN)    :: KLON! Number of atmospheres (longitudes) 
-INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV! Number of atmospheric layers 
-INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA, KFDIA 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLON! Number of atmospheres (longitudes)
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV! Number of atmospheric layers
+INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA, KFDIA
 
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PAPH(KLON,KLEV+1) ! Interface pressures (Pa)
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PAP(KLON,KLEV) ! Layer pressures (Pa)
@@ -47,15 +47,15 @@ REAL(KIND=JPRB)   ,INTENT(IN)    :: PC22(KLON,KLEV) ! CFC22 mass mixing ratio
 REAL(KIND=JPRB)   ,INTENT(IN)    :: PCL4(KLON,KLEV) ! CCL4  mass mixing ratio
 REAL(KIND=JPRB)   ,INTENT(IN)    :: POZN(KLON,KLEV) ! O3 mass mixing ratio
 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCOLDRY(KIDIA:KFDIA,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCOLDRY(KIDIA:KFDIA,KLEV)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PWBRODL(KIDIA:KFDIA,KLEV) ! broadening gas column density (mol/cm2)
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PWKL(KIDIA:KFDIA,JPINPX,KLEV) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PWKL(KIDIA:KFDIA,JPINPX,KLEV)
 REAL(KIND=JPRB)   ,INTENT(OUT)   :: PWX(KIDIA:KFDIA,JPXSEC,KLEV) ! Amount of trace gases
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PAVEL(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTAVEL(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PZ(KIDIA:KFDIA,0:KLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTZ(KIDIA:KFDIA,0:KLEV) 
-INTEGER(KIND=JPIM),INTENT(OUT)   :: KREFLECT(KIDIA:KFDIA) 
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PAVEL(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTAVEL(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PZ(KIDIA:KFDIA,0:KLEV)
+REAL(KIND=JPRB)   ,INTENT(OUT)   :: PTZ(KIDIA:KFDIA,0:KLEV)
+INTEGER(KIND=JPIM),INTENT(OUT)   :: KREFLECT(KIDIA:KFDIA)
 
 !      real rch4                       ! CH4 mass mixing ratio
 !      real rn2o                       ! N2O mass mixing ratio
@@ -63,8 +63,8 @@ INTEGER(KIND=JPIM),INTENT(OUT)   :: KREFLECT(KIDIA:KFDIA)
 !      real rcfc12                     ! CFC12 mass mixing ratio
 !      real rcfc22                     ! CFC22 mass mixing ratio
 !      real rccl4                      ! CCl4  mass mixing ratio
-!- from PROFILE             
-!- from SURFACE             
+!- from PROFILE
+!- from SURFACE
 REAL(KIND=JPRB) :: ZAMD                  ! Effective molecular weight of dry air (g/mol)
 REAL(KIND=JPRB) :: ZAMW                  ! Molecular weight of water vapor (g/mol)
 REAL(KIND=JPRB) :: ZAMCO2                ! Molecular weight of carbon dioxide (g/mol)
@@ -95,7 +95,7 @@ data ZAMCL4 / 153.8230_JPRB   /
 data ZAVGDRO/ 6.02214E23_JPRB /
 
 INTEGER(KIND=JPIM) :: IATM, JMOL, IXMAX, J1, J2, JK, JL
-INTEGER(KIND=JPIM) :: ITMOL, INXMOL
+INTEGER(KIND=JPIM), PARAMETER :: ITMOL = 7
 
 REAL(KIND=JPRB) :: ZAMM
 
@@ -104,7 +104,7 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 ! ***
 
 ! *** mji
-! Initialize all molecular amounts to zero here, 
+! Initialize all molecular amounts to zero here,
 ! then pass ECRT amounts into RRTM arrays below.
 
 !      DATA ZWKL /MAXPRDW*0.0/
@@ -128,24 +128,35 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK('RRTM_PREPARE_GASES',0,ZHOOK_HANDLE)
 
+!$ACC DATA PRESENT(PAPH, PAP, &
+!$ACC              PTH, PT, &
+!$ACC              PQ, PCO2, PCH4, PN2O, PNO2, PC11, PC12, PC22, PCL4, POZN, &
+!$ACC              PCOLDRY, PWBRODL, PWKL, PWX , &
+!$ACC              PAVEL, PTAVEL, PZ, PTZ , KREFLECT)
+
 ZGRAVIT=(RG/RPLRG)*1.E2_JPRB
 
+!$ACC PARALLEL DEFAULT(NONE) ASYNC(1)
+!$ACC LOOP GANG VECTOR
 DO JL = KIDIA, KFDIA
   KREFLECT(JL)=0
-  INXMOL=2
-ENDDO
+  ENDDO
+!$ACC END PARALLEL
 
+!$ACC PARALLEL DEFAULT(NONE) ASYNC(1)
 !DO J1=1,35
 ! IXINDX(J1)=0
+!$ACC LOOP GANG VECTOR COLLAPSE(3)
 DO J2=1,KLEV
   DO J1=1,35
     DO JL = KIDIA, KFDIA
-      PWKL(JL,J1,J2)=0.0_JPRB 
+      PWKL(JL,J1,J2)=0.0_JPRB
     ENDDO
   ENDDO
 ENDDO
 !IXINDX(2)=2
 !IXINDX(3)=3
+!$ACC END PARALLEL
 
 !     Set parameters needed for RRTM execution:
 IATM    = 0
@@ -154,25 +165,28 @@ IATM    = 0
 !      IOUT    = -1
 IXMAX   = 4
 
+!$ACC PARALLEL DEFAULT(NONE) ASYNC(1)
+!$ACC LOOP GANG(STATIC:1) VECTOR
 DO JL = KIDIA, KFDIA
 !     Install ECRT arrays into RRTM arrays for pressure, temperature,
 !     and molecular amounts.  Pressures are converted from Pascals
-!     (ECRT) to mb (RRTM).  H2O, CO2, O3 and trace gas amounts are 
+!     (ECRT) to mb (RRTM).  H2O, CO2, O3 and trace gas amounts are
 !     converted from mass mixing ratio to volume mixing ratio.  CO2
-!     converted with same dry air and CO2 molecular weights used in 
+!     converted with same dry air and CO2 molecular weights used in
 !     ECRT to assure correct conversion back to the proper CO2 vmr.
-!     The dry air column COLDRY (in molec/cm2) is calculated from 
+!     The dry air column COLDRY (in molec/cm2) is calculated from
 !     the level pressures PZ (in mb) based on the hydrostatic equation
 !     and includes a correction to account for H2O in the layer.  The
 !     molecular weight of moist air (amm) is calculated for each layer.
 !     Note: RRTM levels count from bottom to top, while the ECRT input
-!     variables count from the top down and must be reversed 
-  ITMOL = 7
+!     variables count from the top down and must be reversed
   PZ(JL,0) = PAPH(JL,KLEV+1)/100._JPRB
   PTZ(JL,0) = PTH(JL,KLEV+1)
 ENDDO
 
+  !$ACC LOOP SEQ
   DO JK = 1, KLEV
+  !$ACC LOOP GANG(STATIC:1) VECTOR PRIVATE(ZAMM)
     DO JL = KIDIA, KFDIA
     PAVEL(JL,JK) = PAP(JL,KLEV-JK+1)/100._JPRB
     PTAVEL(JL,JK) = PT(JL,KLEV-JK+1)
@@ -189,7 +203,10 @@ ENDDO
     PCOLDRY(JL,JK) = (PZ(JL,JK-1)-PZ(JL,JK))*1.E3_JPRB*ZAVGDRO/(ZGRAVIT*ZAMM*(1.0_JPRB+PWKL(JL,1,JK)))
   ENDDO
   ENDDO
+  !$ACC END PARALLEL
 
+  !$ACC PARALLEL DEFAULT(NONE) ASYNC(1)
+  !$ACC LOOP GANG VECTOR COLLAPSE(3)
   DO J2=1,KLEV
     DO J1=1,JPXSEC
       DO JL = KIDIA, KFDIA
@@ -197,8 +214,13 @@ ENDDO
       ENDDO
     ENDDO
   ENDDO
+  !$ACC END PARALLEL
 
+
+  !$ACC PARALLEL DEFAULT(NONE) ASYNC(1)
+  !$ACC LOOP SEQ
   DO JK = 1, KLEV
+!$ACC LOOP GANG VECTOR PRIVATE (ZSUMMOL)
 DO JL = KIDIA, KFDIA
 !- Set cross section molecule amounts from ECRT; convert to vmr
     PWX(JL,1,JK) = PCL4(JL,KLEV-JK+1) * ZAMD/ZAMCL4
@@ -216,15 +238,20 @@ DO JL = KIDIA, KFDIA
 !CDIR UNROLL=6
 ZSUMMOL = 0.0_JPRB
 !AB broadening gases
+    !$ACC LOOP SEQ
     DO JMOL = 2, ITMOL
       ZSUMMOL = ZSUMMOL + PWKL(JL,JMOL,JK)
     ENDDO
     PWBRODL(JL,JK) = PCOLDRY(JL,JK) * (1._JPRB - ZSUMMOL)
+    !$ACC LOOP SEQ
     DO JMOL = 1, ITMOL
       PWKL(JL,JMOL,JK) = PCOLDRY(JL,JK) * PWKL(JL,JMOL,JK)
-    ENDDO    
+    ENDDO
   ENDDO
 ENDDO
+!$ACC END PARALLEL
+!$ACC WAIT
+!$ACC END DATA
 
 !     ------------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('RRTM_PREPARE_GASES',1,ZHOOK_HANDLE)

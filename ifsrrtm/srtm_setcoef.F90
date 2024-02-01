@@ -7,7 +7,7 @@ SUBROUTINE SRTM_SETCOEF &
  &   PFORFAC , PFORFRAC , KINDFOR , PSELFFAC, PSELFFRAC, KINDSELF ,&
  &   PFAC00  , PFAC01   , PFAC10  , PFAC11  ,&
  &   KJP     , KJT      , KJT1    , PRMU0    &
- & )  
+ & )
 
 !     J. Delamere, AER, Inc. (version 2.5, 02/04/01)
 
@@ -29,32 +29,32 @@ IMPLICIT NONE
 !-- Input arguments
 
 INTEGER(KIND=JPIM),INTENT(IN)    :: KIDIA, KFDIA
-INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV 
-REAL(KIND=JPRB)   ,INTENT(IN)    :: PAVEL(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(IN)    :: PTAVEL(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(IN)    :: PCOLDRY(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(IN)    :: PWKL(KIDIA:KFDIA,35,KLEV) 
-INTEGER(KIND=JPIM),INTENT(OUT)   :: KLAYTROP(KIDIA:KFDIA) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCOLCH4(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCOLCO2(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCOLH2O(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCOLMOL(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCOLO2(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PCOLO3(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PFORFAC(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PFORFRAC(KIDIA:KFDIA,KLEV) 
-INTEGER(KIND=JPIM),INTENT(OUT)   :: KINDFOR(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PSELFFAC(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PSELFFRAC(KIDIA:KFDIA,KLEV) 
-INTEGER(KIND=JPIM),INTENT(OUT)   :: KINDSELF(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PFAC00(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PFAC01(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PFAC10(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PFAC11(KIDIA:KFDIA,KLEV) 
-INTEGER(KIND=JPIM),INTENT(OUT)   :: KJP(KIDIA:KFDIA,KLEV) 
-INTEGER(KIND=JPIM),INTENT(OUT)   :: KJT(KIDIA:KFDIA,KLEV) 
-INTEGER(KIND=JPIM),INTENT(OUT)   :: KJT1(KIDIA:KFDIA,KLEV) 
-REAL(KIND=JPRB)   ,INTENT(IN)    :: PRMU0(KIDIA:KFDIA) 
+INTEGER(KIND=JPIM),INTENT(IN)    :: KLEV
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PAVEL(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PTAVEL(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PCOLDRY(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PWKL(KIDIA:KFDIA,35,KLEV)
+INTEGER(KIND=JPIM),INTENT(INOUT) :: KLAYTROP(KIDIA:KFDIA)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PCOLCH4(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PCOLCO2(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PCOLH2O(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PCOLMOL(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PCOLO2(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PCOLO3(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PFORFAC(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PFORFRAC(KIDIA:KFDIA,KLEV)
+INTEGER(KIND=JPIM),INTENT(INOUT) :: KINDFOR(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PSELFFAC(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PSELFFRAC(KIDIA:KFDIA,KLEV)
+INTEGER(KIND=JPIM),INTENT(INOUT) :: KINDSELF(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PFAC00(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PFAC01(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PFAC10(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PFAC11(KIDIA:KFDIA,KLEV)
+INTEGER(KIND=JPIM),INTENT(INOUT) :: KJP(KIDIA:KFDIA,KLEV)
+INTEGER(KIND=JPIM),INTENT(INOUT) :: KJT(KIDIA:KFDIA,KLEV)
+INTEGER(KIND=JPIM),INTENT(INOUT) :: KJT1(KIDIA:KFDIA,KLEV)
+REAL(KIND=JPRB)   ,INTENT(IN)    :: PRMU0(KIDIA:KFDIA)
 !-- Output arguments
 
 !-- local integers
@@ -75,13 +75,27 @@ IF (LHOOK) CALL DR_HOOK('SRTM_SETCOEF',0,ZHOOK_HANDLE)
 Z_STPFAC = 296._JPRB/1013._JPRB
 I_NLAYERS = KLEV
 
+!$ACC PARALLEL DEFAULT(NONE) PRESENT(PAVEL, PTAVEL, PCOLDRY, PWKL, KLAYTROP, PCOLCH4, PCOLCO2, PCOLH2O, PCOLMOL, &
+!$ACC   PCOLO2,PCOLO3, PFORFAC, PFORFRAC, KINDFOR, PSELFFAC, PSELFFRAC, KINDSELF, PFAC00, PFAC01, PFAC10, PFAC11, &
+!$ACC   KJP, KJT,KJT1, PRMU0) ASYNC(1)
+!$ACC LOOP SEQ
+DO JK = 1, KLEV
+  !$ACC LOOP GANG(STATIC:1) VECTOR
+  DO JL = KIDIA, KFDIA
+    PCOLMOL(JL,JK) = 0.0_JPRB
+  ENDDO
+ENDDO
+!$ACC LOOP GANG(STATIC:1) VECTOR
 DO JL = KIDIA, KFDIA
   IF (PRMU0(JL) > 0.0_JPRB) THEN
     KLAYTROP(JL)  = 0
   ENDIF
 ENDDO
 
+!$ACC LOOP SEQ
 DO JK = 1, I_NLAYERS
+  !$ACC LOOP GANG(STATIC:1) VECTOR &
+  !$ACC   PRIVATE(Z_PLOG, Z_FP, Z_FT, Z_FT1, Z_WATER, Z_SCALEFAC, Z_FACTOR, Z_CO2REG, Z_COMPFP, JP1)
   DO JL = KIDIA, KFDIA
     IF (PRMU0(JL) > 0.0_JPRB) THEN
       !        Find the two reference pressures on either side of the
@@ -100,11 +114,11 @@ DO JK = 1, I_NLAYERS
       Z_FP = 5. * (PREFLOG(KJP(JL,JK)) - Z_PLOG)
 
       !        Determine, for each reference pressure (JP and JP1), which
-      !        reference temperature (these are different for each  
+      !        reference temperature (these are different for each
       !        reference pressure) is nearest the layer temperature but does
       !        not exceed it.  Store these indices in JT and JT1, resp.
       !        Store in FT (resp. FT1) the fraction of the way between JT
-      !        (JT1) and the next highest reference temperature that the 
+      !        (JT1) and the next highest reference temperature that the
       !        layer temperature falls.
 
       KJT(JL,JK) = INT(3. + (PTAVEL(JL,JK)-TREF(KJP(JL,JK)))/15.)
@@ -131,7 +145,7 @@ DO JK = 1, I_NLAYERS
       ! Olivier Marsden (15 June 2017)
       !IF (Z_PLOG <= 4.56_JPRB) GO TO 5300
       IF (KJP(JL,JK) >= 13) GO TO 5300
-      
+
       KLAYTROP(JL) =  KLAYTROP(JL) + 1
 
       !        Set up factors needed to separately include the water vapor
@@ -203,9 +217,9 @@ DO JK = 1, I_NLAYERS
 5400  CONTINUE
 
       !        We have now isolated the layer ln pressure and temperature,
-      !        between two reference pressures and two reference temperatures 
-      !        (for each reference pressure).  We multiply the pressure 
-      !        fraction FP with the appropriate temperature fractions to get 
+      !        between two reference pressures and two reference temperatures
+      !        (for each reference pressure).  We multiply the pressure
+      !        fraction FP with the appropriate temperature fractions to get
       !        the factors that will be needed for the interpolation that yields
       !        the optical depths (performed in routines TAUGBn for band n).
 
@@ -218,8 +232,9 @@ DO JK = 1, I_NLAYERS
     ENDIF
   ENDDO
 ENDDO
+!$ACC END PARALLEL
 
-!----------------------------------------------------------------------- 
+!-----------------------------------------------------------------------
 IF (LHOOK) CALL DR_HOOK('SRTM_SETCOEF',1,ZHOOK_HANDLE)
 
 END SUBROUTINE SRTM_SETCOEF

@@ -9,7 +9,7 @@ SUBROUTINE SRTM_GAS_OPTICAL_DEPTH &
  &   PFORFAC , PFORFRAC , KINDFOR , PSELFFAC, PSELFFRAC, KINDSELF ,&
  &   PFAC00  , PFAC01   , PFAC10  , PFAC11 ,&
  &   KJP     , KJT      , KJT1 ,&
- !-- output arrays 
+ !-- output arrays
  &   POD, PSSA, PINCSOL)
 
 
@@ -91,17 +91,14 @@ INTEGER(KIND=JPIM),INTENT(IN)    :: KJP(KIDIA:KFDIA,KLEV)
 INTEGER(KIND=JPIM),INTENT(IN)    :: KJT(KIDIA:KFDIA,KLEV)
 INTEGER(KIND=JPIM),INTENT(IN)    :: KJT1(KIDIA:KFDIA,KLEV)
 
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: POD(KIDIA:KFDIA,KLEV,JPGPT) ! Optical depth
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PSSA(KIDIA:KFDIA,KLEV,JPGPT) ! Single scattering albedo
-REAL(KIND=JPRB)   ,INTENT(OUT)   :: PINCSOL(KIDIA:KFDIA,JPGPT) ! Incoming solar flux
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: POD(KIDIA:KFDIA,KLEV,JPGPT) ! Optical depth
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PSSA(KIDIA:KFDIA,KLEV,JPGPT) ! Single scattering albedo
+REAL(KIND=JPRB)   ,INTENT(INOUT) :: PINCSOL(KIDIA:KFDIA,JPGPT) ! Incoming solar flux
 
 
 !     ------------------------------------------------------------------
 
-INTEGER(KIND=JPIM) :: IB1, IB2, IBM, IGT, IW(KIDIA:KFDIA), JB, JG, JK, JL, IC, ICOUNT
-
-INTEGER(KIND=JPIM) :: IND(KFDIA-KIDIA+1)
-
+INTEGER(KIND=JPIM) :: IB1, IB2, IBM, IGT, IW(KIDIA:KFDIA), JB, JG, JK, JL, ICOUNT
 
 !-- Output of SRTM_TAUMOLn routines
 REAL(KIND=JPRB) :: ZTAUG(KIDIA:KFDIA,KLEV,16) ! Absorption optical depth
@@ -130,32 +127,33 @@ REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK('SRTM_GAS_OPTICAL_DEPTH',0,ZHOOK_HANDLE)
 
+!$ACC DATA CREATE(IW, ZTAUG, ZTAUR, ZSFLXZEN) &
+!$ACC     PRESENT(PONEMINUS, PRMU0, KLAYTROP, PCOLCH4, PCOLCO2, PCOLH2O, &
+!$ACC             PCOLMOL, PCOLO2, PCOLO3, PFORFAC, PFORFRAC, KINDFOR, PSELFFAC, &
+!$ACC             PSELFFRAC, KINDSELF, PFAC00, PFAC01, PFAC10, PFAC11, KJP, &
+!$ACC             KJT, KJT1, POD, PSSA, PINCSOL)
+
 IB1=JPB1
 IB2=JPB2
 
-IC=0
+ICOUNT=0
+!$ACC WAIT
+!$ACC PARALLEL LOOP GANG VECTOR DEFAULT(NONE) REDUCTION(+:ICOUNT)
 DO JL = KIDIA, KFDIA
   IF (PRMU0(JL) > 0.0_JPRB) THEN
-    IC=IC+1
-    IND(IC)=JL
+    ICOUNT=ICOUNT+1
     IW(JL)=0
   ENDIF
 ENDDO
-ICOUNT=IC
-IF(ICOUNT==0)THEN
-  IF (LHOOK) CALL DR_HOOK('SRTM_SPCVRT_MCICA',1,ZHOOK_HANDLE)
-  RETURN
-ENDIF
+!$ACC END PARALLEL LOOP
 
-JB=IB1-1
+IF (ICOUNT/=0) THEN
+
 DO JB = IB1, IB2
-  DO IC=1,ICOUNT
-    JL=IND(IC)
-    IBM = JB-15
-    IGT = NGC(IBM)
-  ENDDO
+  IBM = JB-15
+  IGT = NGC(IBM)
 
-  !-- for each band, computes the gaseous and Rayleigh optical thickness 
+  !-- for each band, computes the gaseous and Rayleigh optical thickness
   !  for all g-points within the band
 
   IF (JB == 16) THEN
@@ -166,7 +164,7 @@ DO JB = IB1, IB2
      &   PCOLH2O , PCOLCH4  , PCOLMOL  ,&
      &   KLAYTROP, PSELFFAC , PSELFFRAC, KINDSELF, PFORFAC  , PFORFRAC, KINDFOR ,&
      &   ZSFLXZEN, ZTAUG    , ZTAUR    , PRMU0     &
-     & )  
+     & )
 
   ELSEIF (JB == 17) THEN
     CALL SRTM_TAUMOL17 &
@@ -176,7 +174,7 @@ DO JB = IB1, IB2
      &   PCOLH2O , PCOLCO2 , PCOLMOL  ,&
      &   KLAYTROP, PSELFFAC, PSELFFRAC, KINDSELF  , PFORFAC, PFORFRAC, KINDFOR ,&
      &   ZSFLXZEN, ZTAUG   , ZTAUR    , PRMU0     &
-     & )  
+     & )
 
   ELSEIF (JB == 18) THEN
     CALL SRTM_TAUMOL18 &
@@ -186,7 +184,7 @@ DO JB = IB1, IB2
      &   PCOLH2O , PCOLCH4 , PCOLMOL  ,&
      &   KLAYTROP, PSELFFAC, PSELFFRAC, KINDSELF  , PFORFAC, PFORFRAC, KINDFOR ,&
      &   ZSFLXZEN, ZTAUG   , ZTAUR    , PRMU0     &
-     & )  
+     & )
 
   ELSEIF (JB == 19) THEN
     CALL SRTM_TAUMOL19 &
@@ -196,7 +194,7 @@ DO JB = IB1, IB2
      &   PCOLH2O , PCOLCO2 , PCOLMOL  ,&
      &   KLAYTROP, PSELFFAC, PSELFFRAC, KINDSELF  , PFORFAC, PFORFRAC, KINDFOR ,&
      &   ZSFLXZEN, ZTAUG   , ZTAUR    , PRMU0     &
-     & )  
+     & )
 
   ELSEIF (JB == 20) THEN
     CALL SRTM_TAUMOL20 &
@@ -206,7 +204,7 @@ DO JB = IB1, IB2
      &   PCOLH2O , PCOLCH4 , PCOLMOL  ,&
      &   KLAYTROP, PSELFFAC, PSELFFRAC, KINDSELF  , PFORFAC, PFORFRAC, KINDFOR ,&
      &   ZSFLXZEN, ZTAUG   , ZTAUR    , PRMU0     &
-     & )  
+     & )
 
   ELSEIF (JB == 21) THEN
     CALL SRTM_TAUMOL21 &
@@ -216,7 +214,7 @@ DO JB = IB1, IB2
      &   PCOLH2O , PCOLCO2 , PCOLMOL  ,&
      &   KLAYTROP, PSELFFAC, PSELFFRAC, KINDSELF  , PFORFAC, PFORFRAC, KINDFOR ,&
      &   ZSFLXZEN, ZTAUG   , ZTAUR    , PRMU0     &
-     & )  
+     & )
 
   ELSEIF (JB == 22) THEN
     CALL SRTM_TAUMOL22 &
@@ -226,7 +224,7 @@ DO JB = IB1, IB2
      &   PCOLH2O , PCOLMOL , PCOLO2   ,&
      &   KLAYTROP, PSELFFAC, PSELFFRAC, KINDSELF  , PFORFAC, PFORFRAC, KINDFOR ,&
      &   ZSFLXZEN, ZTAUG   , ZTAUR    , PRMU0     &
-     & )  
+     & )
 
   ELSEIF (JB == 23) THEN
     CALL SRTM_TAUMOL23 &
@@ -236,7 +234,7 @@ DO JB = IB1, IB2
      &   PCOLH2O , PCOLMOL ,&
      &   KLAYTROP, PSELFFAC, PSELFFRAC, KINDSELF  , PFORFAC, PFORFRAC, KINDFOR ,&
      &   ZSFLXZEN, ZTAUG   , ZTAUR    , PRMU0     &
-     & )  
+     & )
 
   ELSEIF (JB == 24) THEN
     CALL SRTM_TAUMOL24 &
@@ -246,7 +244,7 @@ DO JB = IB1, IB2
      &   PCOLH2O , PCOLMOL , PCOLO2   , PCOLO3 ,&
      &   KLAYTROP, PSELFFAC, PSELFFRAC, KINDSELF  , PFORFAC, PFORFRAC, KINDFOR ,&
      &   ZSFLXZEN, ZTAUG   , ZTAUR    , PRMU0     &
-     & )  
+     & )
 
   ELSEIF (JB == 25) THEN
     !--- visible 16000-22650 cm-1   0.4415 - 0.6250 um
@@ -257,7 +255,7 @@ DO JB = IB1, IB2
      &   PCOLH2O  , PCOLMOL , PCOLO3 ,&
      &   KLAYTROP ,&
      &   ZSFLXZEN, ZTAUG   , ZTAUR   , PRMU0     &
-     & )  
+     & )
 
   ELSEIF (JB == 26) THEN
     !--- UV-A 22650-29000 cm-1   0.3448 - 0.4415 um
@@ -265,7 +263,7 @@ DO JB = IB1, IB2
      & ( KIDIA   , KFDIA   , KLEV    ,&
      &   PCOLMOL ,KLAYTROP,&
      &   ZSFLXZEN, ZTAUG   , ZTAUR    , PRMU0     &
-     & )  
+     & )
 
   ELSEIF (JB == 27) THEN
     !--- UV-B 29000-38000 cm-1   0.2632 - 0.3448 um
@@ -276,7 +274,7 @@ DO JB = IB1, IB2
      &   PCOLMOL , PCOLO3 ,&
      &   KLAYTROP ,&
      &   ZSFLXZEN, ZTAUG   , ZTAUR    , PRMU0     &
-     & )  
+     & )
 
   ELSEIF (JB == 28) THEN
     !--- UV-C 38000-50000 cm-1   0.2000 - 0.2632 um
@@ -287,7 +285,7 @@ DO JB = IB1, IB2
      &   PCOLMOL , PCOLO2  , PCOLO3 ,&
      &   KLAYTROP ,&
      &   ZSFLXZEN, ZTAUG   , ZTAUR  , PRMU0     &
-     & )  
+     & )
 
   ELSEIF (JB == 29) THEN
     CALL SRTM_TAUMOL29 &
@@ -297,32 +295,44 @@ DO JB = IB1, IB2
      &   PCOLH2O  , PCOLCO2 , PCOLMOL  ,&
      &   KLAYTROP , PSELFFAC, PSELFFRAC, KINDSELF  , PFORFAC, PFORFRAC, KINDFOR ,&
      &   ZSFLXZEN , ZTAUG   , ZTAUR    , PRMU0     &
-     & )  
+     & )
 
   ENDIF
-   
+
+  !$ACC PARALLEL DEFAULT(NONE) ASYNC(1)
+  !$ACC LOOP SEQ
   DO JG=1,IGT
 ! Added for DWD (2020)
 !NEC$ ivdep
-    DO IC=1,ICOUNT
-      JL=IND(IC)
-      IW(JL)=IW(JL)+1
-
-      ! Incoming solar flux into plane perp to incoming radiation
-      PINCSOL(JL,IW(JL)) = ZSFLXZEN(JL,JG)
+    !$ACC LOOP GANG(STATIC:1) VECTOR
+    DO JL = KIDIA, KFDIA
+      IF (PRMU0(JL) > 0.0_JPRB) THEN
+        IW(JL)=IW(JL)+1
+        ! Incoming solar flux into plane perp to incoming radiation
+        PINCSOL(JL,IW(JL)) = ZSFLXZEN(JL,JG)
+      ENDIF
     ENDDO
 
+    !$ACC LOOP SEQ
     DO JK=1,KLEV
-      DO IC=1,ICOUNT
-        JL=IND(IC)
-        POD (JL,JK,IW(JL)) = ZTAUR(JL,JK,JG) + ZTAUG(JL,JK,JG)
-        PSSA(JL,JK,IW(JL)) = ZTAUR(JL,JK,JG) / POD(JL,JK,IW(JL))
+      !$ACC LOOP GANG(STATIC:1) VECTOR PRIVATE(JL)
+      DO JL = KIDIA, KFDIA
+        IF (PRMU0(JL) > 0.0_JPRB) THEN
+          POD (JL,JK,IW(JL)) = ZTAUR(JL,JK,JG) + ZTAUG(JL,JK,JG)
+          PSSA(JL,JK,IW(JL)) = ZTAUR(JL,JK,JG) / POD(JL,JK,IW(JL))
+        ENDIF
       ENDDO
     ENDDO
 
   ENDDO   !-- end loop on JG (g point)
+  !$ACC END PARALLEL
 
 ENDDO     !-- end loop on JB (band)
+
+ENDIF
+
+!$ACC WAIT
+!$ACC END DATA
 
 !     ------------------------------------------------------------------
 

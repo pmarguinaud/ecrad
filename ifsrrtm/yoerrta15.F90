@@ -29,6 +29,8 @@ REAL(KIND=JPRB) :: FORREF(4,NG15)
 
 EQUIVALENCE (KA(1,1,1,1),ABSA(1,1))
 
+!$ACC DECLARE CREATE(FRACREFA, KA, ABSA, KA_MN2, SELFREF, FORREF)
+
 !     -----------------------------------------------------------------
 !        * E.C.M.W.F. PHYSICS PACKAGE *
 
@@ -36,12 +38,12 @@ EQUIVALENCE (KA(1,1,1,1),ABSA(1,1))
 
 !  NAME     TYPE     PURPOSE
 !  ----   : ----   : ---------------------------------------------------
-! ABSA    : REAL     absorption coefficient of major absorber for M reference tropospheric 
-!                    pressures and N reference tropospheric temperatures 
+! ABSA    : REAL     absorption coefficient of major absorber for M reference tropospheric
+!                    pressures and N reference tropospheric temperatures
 ! FRACREFA: REAL     distance from r and T reference tabulated points (troposphere)
-! KA      : REAL     absorption coefficient of major absorber (equiv. to ABSA)   
+! KA      : REAL     absorption coefficient of major absorber (equiv. to ABSA)
 ! SELFREF : REAL     self broadening coefficient for water vapour
-! STRRAT  : REAL     weighting factors for the transition between tropospheric 
+! STRRAT  : REAL     weighting factors for the transition between tropospheric
 !                    and stratospheric computations
 !     -----------------------------------------------------------------
 END MODULE YOERRTA15
