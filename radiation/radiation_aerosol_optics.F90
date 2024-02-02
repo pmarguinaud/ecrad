@@ -536,7 +536,7 @@ contains
     ! for each g point. Note that longwave ssa and asymmetry and
     ! shortwave asymmetry are all zero for gases, so are not yet
     ! defined on input and are therefore intent(out).
-real(jprb), dimension(ng_lw,nlev,istartcol:iendcol), &
+    real(jprb), dimension(ng_lw,nlev,istartcol:iendcol), &
          &   intent(inout) :: od_lw
     real(jprb), dimension(config%n_g_lw_if_scattering,nlev,istartcol:iendcol), &
          &   intent(out)   :: ssa_lw, g_lw
@@ -600,6 +600,10 @@ real(jprb), dimension(ng_lw,nlev,istartcol:iendcol), &
            &  od_lw, ssa_lw, g_lw, od_sw, ssa_sw, g_sw)
     else
       ! Aerosol mixing ratios have been provided
+#ifdef _OPENACC
+      write(nulerr,'(a)') '*** Error: radiation_aerosol_optics:add_aerosol_optics aerosol%is_direct==.false. is not ported to GPU'
+      call radiation_abort()
+#endif
 
       do jtype = 1,config%n_aerosol_types
         if (config%aerosol_optics%iclass(jtype) == IAerosolClassUndefined) then
@@ -907,6 +911,8 @@ real(jprb), dimension(ng_lw,nlev,istartcol:iendcol), &
 
     if (lhook) call dr_hook('radiation_aerosol_optics:add_aerosol_optics_direct',0,hook_handle)
 
+    !$ACC DATA PRESENT(config, aerosol)
+
     if (config%do_sw) then
       ! Check array dimensions
       if (ubound(aerosol%od_sw,1) /= config%n_bands_sw) then
@@ -919,13 +925,29 @@ real(jprb), dimension(ng_lw,nlev,istartcol:iendcol), &
       istartlev = lbound(aerosol%od_sw,2)
       iendlev   = ubound(aerosol%od_sw,2)
 
+      !$ACC DATA PRESENT(od_sw, ssa_sw, g_sw)
+
       ! Set variables to zero that may not have been previously
-      g_sw(:,:,istartcol:iendcol) = 0.0_jprb
+      !$ACC PARALLEL DEFAULT(NONE) ASYNC(1)
+      !$ACC LOOP GANG VECTOR COLLAPSE(3)
+      do jcol = istartcol,iendcol
+        do jlev = 1,nlev
+          do jg = 1,config%n_g_sw
+            g_sw(jg,jlev,jcol) = 0.0_jprb
+          end do
+        end do
+      end do
+      !$ACC END PARALLEL
 
       ! Loop over position
+      !$ACC PARALLEL DEFAULT(NONE) &
+      !$ACC   NUM_GANGS(iendcol-istartcol+1) &
+      !$ACC   VECTOR_LENGTH(((config%n_g_sw-1)/32+1)*32) ASYNC(1)
+      !$ACC LOOP GANG PRIVATE(od_sw_aerosol, scat_sw_aerosol, scat_g_sw_aerosol)
       do jcol = istartcol,iendcol
 ! Added for DWD (2020)
 !NEC$ forced_collapse
+        !$ACC LOOP VECTOR COLLAPSE(2)
         do jlev = istartlev,iendlev
           do jb = 1,config%n_bands_sw
             od_sw_aerosol(jb,jlev) = aerosol%od_sw(jb,jlev,jcol)
@@ -945,9 +967,15 @@ real(jprb), dimension(ng_lw,nlev,istartcol:iendcol), &
         ! Combine aerosol shortwave scattering properties with gas
         ! properties (noting that any gas scattering will have an
         ! asymmetry factor of zero)
+        !$ACC LOOP VECTOR COLLAPSE(2) PRIVATE(iband, local_od, local_scat)
         do jlev = istartlev,iendlev
+#ifdef _OPENACC
+          do jg = 1,config%n_g_sw
+            if (od_sw_aerosol(1,jlev) > 0.0_jprb) then
+#else
           if (od_sw_aerosol(1,jlev) > 0.0_jprb) then
             do jg = 1,config%n_g_sw
+#endif
               iband = config%i_band_from_reordered_g_sw(jg)
               local_od = od_sw(jg,jlev,jcol) + od_sw_aerosol(iband,jlev)
               local_scat = ssa_sw(jg,jlev,jcol) * od_sw(jg,jlev,jcol) &
@@ -959,11 +987,18 @@ real(jprb), dimension(ng_lw,nlev,istartcol:iendcol), &
               local_od = od_sw(jg,jlev,jcol) + od_sw_aerosol(iband,jlev)
               ssa_sw(jg,jlev,jcol) = local_scat / local_od
               od_sw (jg,jlev,jcol) = local_od
+#ifdef _OPENACC
+            end if
+          end do
+#else
             end do
           end if
+#endif
         end do
       end do
+    !$ACC END PARALLEL
 
+    !$ACC END DATA
     end if
 
     if (config%do_lw) then
@@ -1016,30 +1051,41 @@ real(jprb), dimension(ng_lw,nlev,istartcol:iendcol), &
 
       else ! No longwave scattering
 
+        !$ACC WAIT
         ! Loop over position
+        !$ACC PARALLEL DEFAULT(NONE) PRESENT(od_lw) &
+        !$ACC   NUM_GANGS(iendcol-istartcol+1) &
+        !$ACC   VECTOR_LENGTH(((config%n_g_lw-1)/32+1)*32) ASYNC(1)
+        !$ACC LOOP GANG PRIVATE(od_lw_aerosol)
         do jcol = istartcol,iendcol
+          !$ACC LOOP WORKER
 ! Added for DWD (2020)
 !NEC$ forced_collapse
           do jlev = istartlev,iendlev
             ! If aerosol longwave scattering is not included then we
             ! weight the optical depth by the single scattering
             ! co-albedo
+            !$ACC LOOP VECTOR
             do jb = 1, config%n_bands_lw
               od_lw_aerosol(jb,jlev) = aerosol%od_lw(jb,jlev,jcol) &
                  &  * (1.0_jprb - aerosol%ssa_lw(jb,jlev,jcol))
             end do
           end do
+          !$ACC LOOP WORKER
           do jlev = istartlev,iendlev
+            !$ACC LOOP VECTOR
             do jg = 1,config%n_g_lw
               od_lw(jg,jlev,jcol) = od_lw(jg,jlev,jcol) &
                    &  + od_lw_aerosol(config%i_band_from_reordered_g_lw(jg),jlev)
             end do
           end do
         end do
+        !$ACC END PARALLEL
 
       end if
     end if
 
+    !$ACC END DATA
 
     if (lhook) call dr_hook('radiation_aerosol_optics:add_aerosol_optics_direct',1,hook_handle)
 

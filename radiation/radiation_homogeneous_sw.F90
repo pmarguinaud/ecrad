@@ -31,7 +31,7 @@ contains
   ! Shortwave homogeneous solver, in which clouds are assumed to fill
   ! the gridbox horizontally
   subroutine solver_homogeneous_sw(nlev,istartcol,iendcol, &
-       &  config, single_level, cloud, & 
+       &  config, single_level, cloud, &
        &  od, ssa, g, od_cloud, ssa_cloud, g_cloud, &
        &  albedo_direct, albedo_diffuse, incoming_sw, &
        &  flux)
@@ -106,6 +106,10 @@ contains
     ! Optical depth of cloud in g-point space
     real(jprb), dimension(config%n_g_sw) :: od_cloud_g
 
+    ! Temporary working array
+    real(jprb), dimension(config%n_g_sw,nlev+1) :: tmp_work_albedo, tmp_work_source
+    real(jprb), dimension(config%n_g_sw,nlev) :: tmp_work_inv_denominator
+
     ! Is there any cloud in the profile?
     logical :: is_cloudy_profile
 
@@ -127,7 +131,7 @@ contains
       if (single_level%cos_sza(jcol) > 0.0_jprb) then
 
         cos_sza = single_level%cos_sza(jcol)
-        
+
         ! Is there any cloud in the profile?
         is_cloudy_profile = .false.
         do jlev = 1,nlev
@@ -158,7 +162,7 @@ contains
                    &  reflectance(:,jlev), transmittance(:,jlev), &
                    &  ref_dir(:,jlev), trans_dir_diff(:,jlev), &
                    &  trans_dir_dir(:,jlev) )
-              
+
             end if
           end do
         else
@@ -182,14 +186,17 @@ contains
             end if
           end do
         end if
-          
+
         if (config%do_clear) then
           ! Use adding method to compute fluxes
           call adding_ica_sw(ng, nlev, incoming_sw(:,jcol), &
                &  albedo_diffuse(:,jcol), albedo_direct(:,jcol), &
-               &  spread(cos_sza,1,ng), reflectance, transmittance, ref_dir, trans_dir_diff, &
-               &  trans_dir_dir, flux_up, flux_dn_diffuse, flux_dn_direct)
-        
+               &  cos_sza, reflectance, transmittance, ref_dir, trans_dir_diff, &
+               &  trans_dir_dir, flux_up, flux_dn_diffuse, flux_dn_direct, &
+               &  albedo=tmp_work_albedo, &
+               &  source=tmp_work_source, &
+               &  inv_denominator=tmp_work_inv_denominator)
+
           ! Sum over g-points to compute and save clear-sky broadband
           ! fluxes
           flux%sw_up_clear(jcol,:) = sum(flux_up,1)
@@ -222,7 +229,7 @@ contains
           end if
 
         end if ! Do clear-sky calculations
-  
+
         ! Now the total-sky calculation.  If this is a clear profile
         ! and clear-sky fluxes have been calculated then we can simply
         ! copy over the clear-sky fluxes, otherwise we need to compute
@@ -240,7 +247,7 @@ contains
               where (od_total > 0.0_jprb)
                 ssa_total = (ssa(:,jlev,jcol)*od(:,jlev,jcol) &
                      &     + ssa_cloud(config%i_band_from_reordered_g_sw,jlev,jcol) &
-                     &     *  od_cloud_g) & 
+                     &     *  od_cloud_g) &
                      &     / od_total
               end where
               where (ssa_total > 0.0_jprb .and. od_total > 0.0_jprb)
@@ -271,12 +278,15 @@ contains
 
             end if
           end do
-            
+
           ! Use adding method to compute fluxes for an overcast sky
           call adding_ica_sw(ng, nlev, incoming_sw(:,jcol), &
                &  albedo_diffuse(:,jcol), albedo_direct(:,jcol), &
-               &  spread(cos_sza,1,ng), reflectance, transmittance, ref_dir, trans_dir_diff, &
-               &  trans_dir_dir, flux_up, flux_dn_diffuse, flux_dn_direct)
+               &  cos_sza, reflectance, transmittance, ref_dir, trans_dir_diff, &
+               &  trans_dir_dir, flux_up, flux_dn_diffuse, flux_dn_direct, &
+               &  albedo=tmp_work_albedo, &
+               &  source=tmp_work_source, &
+               &  inv_denominator=tmp_work_inv_denominator)
 
           ! Store overcast broadband fluxes
           flux%sw_up(jcol,:) = sum(flux_up,1)

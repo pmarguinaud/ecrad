@@ -39,7 +39,7 @@ contains
   ! such that the stochastic cloud field satisfies the prescribed
   ! overlap parameter accounting for this weighting.
   subroutine solver_mcica_sw(nlev,istartcol,iendcol, &
-       &  config, single_level, cloud, & 
+       &  config, single_level, cloud, &
        &  od, ssa, g, od_cloud, ssa_cloud, g_cloud, &
        &  albedo_direct, albedo_diffuse, incoming_sw, &
        &  flux)
@@ -118,6 +118,11 @@ contains
     ! inhomogeneity
     real(jprb), dimension(config%n_g_sw) :: od_cloud_new
 
+    ! Temporary working array
+    real(jprb), dimension(config%n_g_sw,nlev+1) :: tmp_work_albedo, &
+      &                                            tmp_work_source
+    real(jprb), dimension(config%n_g_sw,nlev) :: tmp_work_inv_denominator
+
     ! Total cloud cover output from the cloud generator
     real(jprb) :: total_cloud_cover
 
@@ -140,7 +145,7 @@ contains
 
     if (.not. config%do_clear) then
       write(nulerr,'(a)') '*** Error: shortwave McICA requires clear-sky calculation to be performed'
-      call radiation_abort()      
+      call radiation_abort()
     end if
 
     ng = config%n_g_sw
@@ -178,10 +183,13 @@ contains
 
         ! Use adding method to compute fluxes
         call adding_ica_sw(ng, nlev, incoming_sw(:,jcol), &
-             &  albedo_diffuse(:,jcol), albedo_direct(:,jcol), spread(cos_sza,1,ng), &
+             &  albedo_diffuse(:,jcol), albedo_direct(:,jcol), cos_sza, &
              &  ref_clear, trans_clear, ref_dir_clear, trans_dir_diff_clear, &
-             &  trans_dir_dir_clear, flux_up, flux_dn_diffuse, flux_dn_direct)
-        
+             &  trans_dir_dir_clear, flux_up, flux_dn_diffuse, flux_dn_direct, &
+             &  albedo=tmp_work_albedo, &
+             &  source=tmp_work_source, &
+             &  inv_denominator=tmp_work_inv_denominator)
+
         ! Sum over g-points to compute and save clear-sky broadband
         ! fluxes. Note that the built-in "sum" function is very slow,
         ! and before being replaced by the alternatives below
@@ -220,7 +228,7 @@ contains
           end if
         end do
 #endif
-        
+
         ! Store spectral downwelling fluxes at surface
         do jg = 1,ng
           flux%sw_dn_diffuse_surf_clear_g(jg,jcol) = flux_dn_diffuse(jg,nlev+1)
@@ -239,7 +247,7 @@ contains
 
         ! Store total cloud cover
         flux%cloud_cover_sw(jcol) = total_cloud_cover
-        
+
         if (total_cloud_cover >= config%cloud_fraction_threshold) then
           ! Total-sky calculation
           do jlev = 1,nlev
@@ -283,7 +291,7 @@ contains
                    &  reflectance(:,jlev), transmittance(:,jlev), &
                    &  ref_dir(:,jlev), trans_dir_diff(:,jlev), &
                    &  trans_dir_dir(:,jlev))
-              
+
             else
               ! Clear-sky layer: copy over clear-sky values
               do jg = 1,ng
@@ -295,13 +303,16 @@ contains
               end do
             end if
           end do
-            
+
           ! Use adding method to compute fluxes for an overcast sky
           call adding_ica_sw(ng, nlev, incoming_sw(:,jcol), &
-               &  albedo_diffuse(:,jcol), albedo_direct(:,jcol), spread(cos_sza,1,ng), &
+               &  albedo_diffuse(:,jcol), albedo_direct(:,jcol), cos_sza, &
                &  reflectance, transmittance, ref_dir, trans_dir_diff, &
-               &  trans_dir_dir, flux_up, flux_dn_diffuse, flux_dn_direct)
-          
+               &  trans_dir_dir, flux_up, flux_dn_diffuse, flux_dn_direct, &
+               &  albedo=tmp_work_albedo, &
+               &  source=tmp_work_source, &
+               &  inv_denominator=tmp_work_inv_denominator)
+
           ! Store overcast broadband fluxes
 #ifdef DWD_REDUCTION_OPTIMIZATIONS
           sum_aux(:,:) = 0.0_jprb
@@ -335,7 +346,7 @@ contains
             end if
           end do
 #endif
-          
+
           ! Cloudy flux profiles currently assume completely overcast
           ! skies; perform weighted average with clear-sky profile
           do jlev = 1, nlev+1
@@ -400,7 +411,7 @@ contains
     end do ! Loop over columns
 
     if (lhook) call dr_hook('radiation_mcica_sw:solver_mcica_sw',1,hook_handle)
-    
+
   end subroutine solver_mcica_sw
 
 end module radiation_mcica_sw

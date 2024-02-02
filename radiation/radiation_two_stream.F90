@@ -75,11 +75,15 @@ contains
 
     integer    :: jg
 
+    !$ACC ROUTINE WORKER
+
 #ifdef DO_DR_HOOK_TWO_STREAM
     real(jphook) :: hook_handle
 
     if (lhook) call dr_hook('radiation_two_stream:calc_two_stream_gammas_lw',0,hook_handle)
 #endif
+
+    !$ACC LOOP WORKER VECTOR
 ! Added for DWD (2020)
 !NEC$ shortloop
     do jg = 1, ng
@@ -128,8 +132,11 @@ contains
     if (lhook) call dr_hook('radiation_two_stream:calc_two_stream_gammas_sw',0,hook_handle)
 #endif
 
+    !$ACC ROUTINE WORKER
+
     ! Zdunkowski "PIFM" (Zdunkowski et al., 1980; Contributions to
     ! Atmospheric Physics 53, 147-66)
+    !$ACC LOOP WORKER VECTOR PRIVATE(factor)
 ! Added for DWD (2020)
 !NEC$ shortloop
     do jg = 1, ng
@@ -203,6 +210,10 @@ contains
     if (lhook) call dr_hook('radiation_two_stream:calc_reflectance_transmittance_lw',0,hook_handle)
 #endif
 
+    !$ACC ROUTINE WORKER
+
+
+    !$ACC LOOP WORKER VECTOR
 ! Added for DWD (2020)
 !NEC$ shortloop
     do jg = 1, ng
@@ -289,8 +300,8 @@ contains
     ! The two transfer coefficients from the two-stream
     ! differential equations
     real(jprb), dimension(ng), target             :: gamma1_loc, gamma2_loc
- real(jprb), dimension(:), contiguous, pointer :: gamma1, gamma2
-!real(jprb), dimension(ng)                     :: k_exponent, exponential
+    real(jprb), dimension(:), contiguous, pointer :: gamma1, gamma2
+    !real(jprb), dimension(ng)                     :: k_exponent, exponential
     real(jprb) :: reftrans_factor
     real(jprb) :: exponential2 ! = exp(-2*k_exponent*od)
 
@@ -304,27 +315,45 @@ contains
     if (lhook) call dr_hook('radiation_two_stream:calc_ref_trans_lw',0,hook_handle)
 #endif
 
+    !$ACC ROUTINE WORKER
+
+    !$ACC DATA CREATE(gamma1_loc) IF(.not. PRESENT(gamma1_out))
+    !$ACC DATA CREATE(gamma2_loc) IF(.not. PRESENT(gamma2_out))
+
     associate (exponential=>transmittance, k_exponent=>source_up)
 
     if (present(gamma1_out)) then
       gamma1 => gamma1_out
-      gamma2 => gamma2_out
     else
       gamma1 => gamma1_loc
+    end if
+
+    if (present(gamma2_out)) then
+      gamma2 => gamma2_out
+    else
       gamma2 => gamma2_loc
     end if
 
+    !$ACC LOOP WORKER VECTOR PRIVATE(factor, k_exponent, &
+    !$ACC   reftrans_factor, exponential, exponential2, &
+    !$ACC   coeff, coeff_up_top, coeff_up_bot, coeff_dn_top, coeff_dn_bot)
     do jg = 1, ng
       factor = (LwDiffusivityWP * 0.5_jprb) * ssa(jg)
       gamma1(jg) = LwDiffusivityWP - factor*(1.0_jprb + asymmetry(jg))
       gamma2(jg) = factor * (1.0_jprb - asymmetry(jg))
       k_exponent(jg) = sqrt(max((gamma1(jg) - gamma2(jg)) * (gamma1(jg) + gamma2(jg)), &
                 KMinLw)) ! Eq 18 of Meador & Weaver (1980)
+
+#ifndef _OPENACC
     end do
 
     exponential = exp(-k_exponent*od)
 
     do jg = 1,ng
+#else
+      exponential(jg) = exp(-k_exponent(jg)*od(jg))
+#endif
+
       if (od(jg) > 1.0e-3_jprb) then
         exponential2 = exponential(jg)*exponential(jg)
         reftrans_factor = 1.0 / (k_exponent(jg)  + gamma1(jg) + (k_exponent(jg) - gamma1(jg))*exponential2)
@@ -358,6 +387,9 @@ contains
     end do
 
     end associate
+
+    !$ACC END DATA
+    !$ACC END DATA
 
 #ifdef DO_DR_HOOK_TWO_STREAM
     if (lhook) call dr_hook('radiation_two_stream:calc_ref_trans_lw',1,hook_handle)
@@ -401,6 +433,8 @@ contains
 
     integer :: jg
 
+    !$ACC ROUTINE WORKER
+
 #ifdef DO_DR_HOOK_TWO_STREAM
     real(jphook) :: hook_handle
 
@@ -411,6 +445,7 @@ contains
     transmittance = exp(-LwDiffusivityWP*od)
 #endif
 
+    !$ACC LOOP WORKER VECTOR
     do jg = 1, ng
       ! Compute upward and downward emission assuming the Planck
       ! function to vary linearly with optical depth within the layer
@@ -504,6 +539,11 @@ contains
     if (lhook) call dr_hook('radiation_two_stream:calc_reflectance_transmittance_sw',0,hook_handle)
 #endif
 
+    !$ACC ROUTINE WORKER
+
+    !$ACC LOOP WORKER VECTOR PRIVATE(gamma4, alpha1, alpha2, k_exponent, &
+    !$ACC   reftrans_factor, exponential0, exponential, exponential2, k_mu0, &
+    !$ACC   k_gamma3, k_gamma4, k_2_exponential, od_over_mu0)
 ! Added for DWD (2020)
 !NEC$ shortloop
     do jg = 1, ng
@@ -522,7 +562,7 @@ contains
         ! to make this entire routine secure in single precision.
         mu0_local = mu0
         if (abs(1.0_jprd - k_exponent*mu0) < 1000.0_jprd * epsilon(1.0_jprd)) then
-          mu0_local = mu0 * (1.0_jprb - 10.0_jprb*epsilon(1.0_jprb))
+          mu0_local = mu0 * (1.0_jprb + SIGN(1._jprd,k_exponent*mu0-1._jprd)*10.0_jprb*epsilon(1.0_jprb))
         end if
 
         od_over_mu0 = max(od(jg) / mu0_local, 0.0_jprd)
@@ -756,6 +796,12 @@ contains
 
 #else
     ! GPU-capable and vector-optimized version for ICON
+    !$ACC ROUTINE WORKER
+
+    !$ACC LOOP WORKER VECTOR PRIVATE(gamma1, gamma2, gamma3, gamma4, &
+    !$ACC   alpha1, alpha2, k_exponent, &
+    !$ACC   reftrans_factor, exponential, k_mu0, &
+    !$ACC   k_gamma3, k_gamma4, k_2_exponential, one_minus_kmu0_sqr)
     do jg = 1, ng
 
       trans_dir_dir(jg) = max(-max(od(jg) * (1.0_jprb/mu0),0.0_jprb),-1000.0_jprb)

@@ -277,17 +277,41 @@ contains
 
     associate(ho => config%cloud_optics)
 
-      ! Array-wise assignment
-      od_lw_cloud  = 0.0_jprb
-      od_sw_cloud  = 0.0_jprb
-      ssa_sw_cloud = 0.0_jprb
-      g_sw_cloud   = 0.0_jprb
-      if (config%do_lw_cloud_scattering) then
-        ssa_lw_cloud = 0.0_jprb
-        g_lw_cloud   = 0.0_jprb
-      end if
+      !$ACC DATA PRESENT (config, thermodynamics, thermodynamics%pressure_hl, &
+      !$ACC              cloud, cloud%fraction, cloud%q_liq, cloud%q_ice, &
+      !$ACC              cloud%re_liq, cloud%re_ice) &
+      !$ACC      PRESENT(od_lw_cloud, g_lw_cloud, ssa_lw_cloud, od_sw_cloud, g_sw_cloud, ssa_sw_cloud)
 
+      ! Array-wise assignment
+      !$ACC PARALLEL DEFAULT(NONE) ASYNC(1)
+      !$ACC LOOP GANG COLLAPSE(2)
+      do jcol=istartcol, iendcol
+        do jlev=1, nlev
+          !$ACC LOOP VECTOR
+          do jb=1, config%n_bands_sw
+            od_sw_cloud(jb,jlev,jcol) = 0.0_jprb
+            ssa_sw_cloud(jb,jlev,jcol) = 0.0_jprb
+            g_sw_cloud(jb,jlev,jcol) = 0.0_jprb
+          end do
+          !$ACC LOOP VECTOR
+          do jb=1, config%n_bands_lw
+            od_lw_cloud(jb,jlev,jcol) = 0.0_jprb
+          end do
+          !$ACC LOOP VECTOR
+          do jb=1, config%n_bands_lw_if_scattering
+            ssa_lw_cloud(jb,jlev,jcol) = 0.0_jprb
+            g_lw_cloud(jb,jlev,jcol) = 0.0_jprb
+          end do
+        end do
+      end do
+      !$ACC END PARALLEL
+
+      !$ACC PARALLEL DEFAULT(NONE) ASYNC(1)
+      !$ACC LOOP SEQ
       do jlev = 1,nlev
+        !$ACC LOOP GANG VECTOR &
+        !$ACC PRIVATE(od_lw_liq, scat_od_lw_liq, g_lw_liq, od_lw_ice, scat_od_lw_ice, g_lw_ice)  &
+        !$ACC PRIVATE(od_sw_liq, scat_od_sw_liq, g_sw_liq, od_sw_ice, scat_od_sw_ice, g_sw_ice)
         do jcol = istartcol,iendcol
           ! Only do anything if cloud is present (assume that
           ! cloud%crop_cloud_fraction has already been called)
@@ -311,7 +335,9 @@ contains
             ! Only compute liquid properties if liquid cloud is
             ! present
             if (lwp_in_cloud > 0.0_jprb) then
+#ifndef _OPENACC
               if (config%i_liq_model == ILiquidModelSOCRATES) then
+#endif
                 ! Compute longwave properties
                 call calc_liq_optics_socrates(config%n_bands_lw, &
                     &  config%cloud_optics%liq_coeff_lw, &
@@ -322,6 +348,7 @@ contains
                     &  config%cloud_optics%liq_coeff_sw, &
                     &  lwp_in_cloud, cloud%re_liq(jcol,jlev), &
                     &  od_sw_liq, scat_od_sw_liq, g_sw_liq)
+#ifndef _OPENACC
               else if (config%i_liq_model == ILiquidModelSlingo) then
                 ! Compute longwave properties
                 call calc_liq_optics_lindner_li(config%n_bands_lw, &
@@ -338,6 +365,7 @@ contains
                     &          config%i_liq_model
                 call radiation_abort()
               end if
+#endif
 
               ! Delta-Eddington scaling in the shortwave only
               if (.not. config%do_sw_delta_scaling_with_gases) then
@@ -360,6 +388,7 @@ contains
 
             ! Only compute ice properties if ice cloud is present
             if (iwp_in_cloud > 0.0_jprb) then
+#ifndef _OPENACC
               if (config%i_ice_model == IIceModelBaran) then
                 ! Compute longwave properties
                 call calc_ice_optics_baran(config%n_bands_lw, &
@@ -404,6 +433,7 @@ contains
                     &  temperature, &
                     &  od_sw_ice, scat_od_sw_ice, g_sw_ice)
               else if (config%i_ice_model == IIceModelFu) then
+#endif
                 ! Compute longwave properties
                 call calc_ice_optics_fu_lw(config%n_bands_lw, &
                     &  config%cloud_optics%ice_coeff_lw, &
@@ -418,6 +448,7 @@ contains
                     &  config%cloud_optics%ice_coeff_sw, &
                     &  iwp_in_cloud, cloud%re_ice(jcol,jlev), &
                     &  od_sw_ice, scat_od_sw_ice, g_sw_ice)
+#ifndef _OPENACC
               else if (config%i_ice_model == IIceModelYi) then
                 ! Compute longwave properties
                 call calc_ice_optics_yi_lw(config%n_bands_lw, &
@@ -434,6 +465,7 @@ contains
                     &          config%i_ice_model
                 call radiation_abort()
               end if
+#endif
 
               ! Delta-Eddington scaling in both longwave and shortwave
               ! (assume that particles are larger than wavelength even
@@ -458,6 +490,7 @@ contains
             if (config%do_lw_cloud_scattering) then
   ! Added for DWD (2020)
   !NEC$ shortloop
+              !$ACC LOOP SEQ
               do jb = 1, config%n_bands_lw
                 od_lw_cloud(jb,jlev,jcol) = od_lw_liq(jb) + od_lw_ice(jb)
                 if (scat_od_lw_liq(jb)+scat_od_lw_ice(jb) > 0.0_jprb) then
@@ -476,6 +509,7 @@ contains
               ! to the absorption optical depth
   ! Added for DWD (2020)
   !NEC$ shortloop
+              !$ACC LOOP SEQ
               do jb = 1, config%n_bands_lw
                 od_lw_cloud(jb,jlev,jcol) = od_lw_liq(jb) - scat_od_lw_liq(jb) &
                       &                   + od_lw_ice(jb) - scat_od_lw_ice(jb)
@@ -483,6 +517,7 @@ contains
             end if
   ! Added for DWD (2020)
   !NEC$ shortloop
+            !$ACC LOOP SEQ
             do jb = 1, config%n_bands_sw
               od_sw_cloud(jb,jlev,jcol) = od_sw_liq(jb) + od_sw_ice(jb)
               g_sw_cloud(jb,jlev,jcol) = (g_sw_liq(jb) * scat_od_sw_liq(jb) &
@@ -494,6 +529,10 @@ contains
           end if ! Cloud present
         end do ! Loop over column
       end do ! Loop over level
+
+      !$ACC END PARALLEL
+      !$ACC WAIT
+      !$ACC END DATA ! PRESENT
 
     end associate
 

@@ -34,9 +34,10 @@ module radiation_gas_constants
   integer, parameter :: ICFC11 = 8
   integer, parameter :: ICFC12 = 9
   integer, parameter :: IHCFC22= 10
-  integer, parameter :: ICCl4  = 11 
+  integer, parameter :: ICCl4  = 11
   integer, parameter :: INO2   = 12
   integer, parameter :: NMaxGases = 12
+  !$ACC DECLARE COPYIN(NMaxGases)
 
   ! Molar masses (g mol-1) of dry air and the various gases above
   real(jprb), parameter :: AirMolarMass = 28.970_jprb
@@ -52,7 +53,7 @@ module radiation_gas_constants
        & 137.3686_jprb,   & ! CFC11
        & 120.914_jprb,    & ! CFC12
        & 86.469_jprb,     & ! HCFC22
-       & 153.823_jprb,    & ! CCl4    
+       & 153.823_jprb,    & ! CCl4
        & 46.0055_jprb /)    ! NO2
 
   ! The corresponding names of the gases in upper and lower case, used
