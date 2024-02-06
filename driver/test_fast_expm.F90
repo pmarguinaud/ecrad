@@ -3,10 +3,10 @@ program test_fast_expm
   ! SPARTACUS shortwave entrapment calculations, but which can fail in
   ! single precision for very specific inputs leading to the matrix
   ! having two repeated eigenvalues
-  
+
   use parkind1, only : jprb
 
-  use radiation_matrix, only : fast_expm_exchange_3
+  use radiation_matrix, only : fast_expm_exchange_3 => fast_expm_exchange_3_orig
 
   real(jprb) :: a(1), b(1), c(1), d(1), r(1,3,3)
 

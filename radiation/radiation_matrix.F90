@@ -59,7 +59,7 @@ module radiation_matrix
 #endif
 
   interface fast_expm_exchange
-    module procedure fast_expm_exchange_2, fast_expm_exchange_3
+    module procedure fast_expm_exchange_2, fast_expm_exchange_3, fast_expm_exchange_3_orig
   end interface fast_expm_exchange
 
 contains
@@ -2162,6 +2162,78 @@ pure subroutine identity_minus_mat_x_mat_3_sw(ng_sw_in,A,B,C)
   ! diagonalization method and is a slight generalization of the
   ! solution provided in the appendix of Hogan et al. (GMD 2018),
   ! which assumed c==d.
+  subroutine fast_expm_exchange_3_orig(n,iend,a,b,c,d,R)
+
+    use yomhook, only : lhook, dr_hook, jphook
+
+    real(jprb), parameter :: my_epsilon = 1.0e-12_jprb
+
+    integer,                      intent(in)  :: n, iend
+    real(jprb), dimension(n),     intent(in)  :: a, b, c, d
+    real(jprb), dimension(n,3,3), intent(out) :: R
+
+    ! Eigenvectors
+    real(jprb), dimension(iend,3,3) :: V
+
+    ! Non-zero Eigenvalues
+    real(jprb), dimension(iend) :: lambda1, lambda2
+
+    ! Diagonal matrix of the exponential of the eigenvalues
+    real(jprb), dimension(iend,3) :: diag
+
+    ! Result of diag right-divided by V
+    real(jprb), dimension(iend,3,3) :: diag_rdivide_V
+
+    ! Intermediate arrays
+    real(jprb), dimension(iend) :: tmp1, tmp2
+
+    integer :: j1, j2
+
+    real(jphook) :: hook_handle
+
+    if (lhook) call dr_hook('radiation_matrix:fast_expm_exchange_3',0,hook_handle)
+
+    ! Eigenvalues
+    tmp1 = 0.5_jprb * (a(1:iend)+b(1:iend)+c(1:iend)+d(1:iend))
+    tmp2 = sqrt(tmp1*tmp1 - (a(1:iend)*c(1:iend) + a(1:iend)*d(1:iend) + b(1:iend)*d(1:iend)))
+    lambda1 = -tmp1 + tmp2
+    lambda2 = -tmp1 - tmp2
+
+    ! Eigenvectors, with securities such taht if a--d are all zero
+    ! then V is non-singular and the identity matrix is returned in R;
+    ! note that lambdaX is typically negative so we need a
+    ! sign-preserving security
+    V(1:iend,1,1) = max(my_epsilon, b(1:iend)) &
+         &  / sign(max(my_epsilon, abs(a(1:iend) + lambda1)), a(1:iend) + lambda1)
+    V(1:iend,1,2) = b(1:iend) &
+         &  / sign(max(my_epsilon, abs(a(1:iend) + lambda2)), a(1:iend) + lambda2)
+    V(1:iend,1,3) = b(1:iend) / max(my_epsilon, a(1:iend))
+    V(1:iend,2,:) = 1.0_jprb
+    V(1:iend,3,1) = c(1:iend) &
+         &  / sign(max(my_epsilon, abs(d(1:iend) + lambda1)), d(1:iend) + lambda1)
+    V(1:iend,3,2) = c(1:iend) &
+         &  / sign(max(my_epsilon, abs(d(1:iend) + lambda2)), d(1:iend) + lambda2)
+    V(1:iend,3,3) = max(my_epsilon, c(1:iend)) / max(my_epsilon, d(1:iend))
+
+    diag(:,1) = exp(lambda1)
+    diag(:,2) = exp(lambda2)
+    diag(:,3) = 1.0_jprb
+
+    ! Compute diag_rdivide_V = diag * V^-1
+    call diag_mat_right_divide_3(iend,iend,V,diag,diag_rdivide_V)
+
+    ! Compute V * diag_rdivide_V
+    do j1 = 1,3
+      do j2 = 1,3
+        R(1:iend,j2,j1) = V(1:iend,j2,1)*diag_rdivide_V(1:iend,1,j1) &
+             &          + V(1:iend,j2,2)*diag_rdivide_V(1:iend,2,j1) &
+             &          + V(1:iend,j2,3)*diag_rdivide_V(1:iend,3,j1)
+      end do
+    end do
+
+    if (lhook) call dr_hook('radiation_matrix:fast_expm_exchange_3',1,hook_handle)
+
+  end subroutine fast_expm_exchange_3_orig
   subroutine fast_expm_exchange_3(ng_sw_in, R)
 
     use yomhook, only : lhook, dr_hook, jphook
