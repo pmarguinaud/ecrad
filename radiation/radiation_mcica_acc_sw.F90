@@ -37,13 +37,13 @@ contains
   ! such that the stochastic cloud field satisfies the prescribed
   ! overlap parameter accounting for this weighting.
   subroutine solver_mcica_acc_sw(nlev,istartcol,iendcol, &
-       &  config, single_level, cloud, & 
+       &  config, single_level, cloud, &
        &  od, ssa, g, od_cloud, ssa_cloud, g_cloud, &
        &  albedo_direct, albedo_diffuse, incoming_sw, &
        &  flux)
 
     use parkind1, only           : jprb
-    use yomhook,  only           : lhook, dr_hook
+    use yomhook,  only           : lhook, dr_hook, jphook
 
     use radiation_io,   only           : nulerr, radiation_abort
     use radiation_config, only         : config_type
@@ -155,22 +155,22 @@ contains
     ! Loop indices for level, column and g point
     integer :: jlev, jcol, jg
 
-    ! temporary sum values for reduction 
+    ! temporary sum values for reduction
     real(jprb) :: sum_up, sum_dn_direct, sum_dn_diffuse
 
-    real(jprb) :: hook_handle
+    real(jphook) :: hook_handle
 
     if (lhook) call dr_hook('radiation_mcica_acc_sw:solver_mcica_acc_sw',0,hook_handle)
 
     if (.not. config%do_clear) then
       write(nulerr,'(a)') '*** Error: shortwave McICA ACC requires clear-sky calculation to be performed'
-      call radiation_abort()      
+      call radiation_abort()
     end if
 
     !$ACC DATA CREATE(flux_up, flux_dn_diffuse, flux_dn_direct, &
     !$ACC             flux_up_clear, flux_dn_diffuse_clear, flux_dn_direct_clear, &
     !$ACC             sample_val, frac, frac_std, overlap_param, &
-    !$ACC             cum_cloud_cover, pair_cloud_cover, cum_product, ibegin, iend) & 
+    !$ACC             cum_cloud_cover, pair_cloud_cover, cum_product, ibegin, iend) &
     !$ACC     PRESENT(config, single_level, cloud, od, ssa, g, od_cloud, &
     !$ACC             ssa_cloud, g_cloud, albedo_direct, albedo_diffuse, &
     !$ACC             incoming_sw, flux)
@@ -207,14 +207,14 @@ contains
 
     !$ACC PARALLEL DEFAULT(NONE) ASYNC(1)
     !$ACC LOOP GANG VECTOR COLLAPSE(2) PRIVATE(overlap_alpha)
-    do jcol = istartcol,iendcol 
+    do jcol = istartcol,iendcol
       !Only perform calculation if sun above the horizon
       !---------------------------------------------------------------------
       ! manual inline from cum_cloud_cover_exp_ran >>>>>>>>>>>>>>>>>>>>>>>>
       ! Loop to compute total cloud cover and the cumulative cloud cover
       ! down to the base of each layer
       do jlev = 1,nlev-1
-        if (single_level%cos_sza(jcol) > 0.0_jprb ) then            
+        if (single_level%cos_sza(jcol) > 0.0_jprb ) then
           ! Convert to "alpha" overlap parameter if necessary
           if (config%use_beta_overlap) then
             overlap_alpha = beta2alpha(overlap_param(jlev,jcol), &
@@ -226,7 +226,7 @@ contains
           pair_cloud_cover(jlev, jcol) = overlap_alpha*max(frac(jlev,jcol),frac(jlev+1,jcol)) &
                 &  + (1.0_jprb - overlap_alpha) &
                 &  * (frac(jlev,jcol)+frac(jlev+1,jcol)-frac(jlev,jcol)*frac(jlev+1,jcol))
-        end if                  
+        end if
       end do
     end do
     !$ACC END PARALLEL
@@ -236,9 +236,9 @@ contains
     do jcol = istartcol,iendcol
       !Only perform calculation if sun above the horizon
       if (single_level%cos_sza(jcol) > 0.0_jprb ) then
-        cum_cloud_cover(1, jcol) = frac(1,jcol)        
+        cum_cloud_cover(1, jcol) = frac(1,jcol)
         cum_product(jcol) = 1.0_jprb - frac(1,jcol)
-        !$ACC LOOP SEQ 
+        !$ACC LOOP SEQ
         do jlev = 1,nlev-1
           if (frac(jlev,jcol) >= MaxCloudFrac) then
             ! Cloud cover has reached one
@@ -247,7 +247,7 @@ contains
             cum_product(jcol) = cum_product(jcol) * (1.0_jprb - pair_cloud_cover(jlev, jcol)) &
                   &  / (1.0_jprb - frac(jlev,jcol))
           end if
-          cum_cloud_cover(jlev+1, jcol) = 1.0_jprb - cum_product(jcol) 
+          cum_cloud_cover(jlev+1, jcol) = 1.0_jprb - cum_product(jcol)
         end do
         flux%cloud_cover_sw(jcol) = cum_cloud_cover(nlev,jcol);
         if (flux%cloud_cover_sw(jcol) < config%cloud_fraction_threshold) then
@@ -297,11 +297,9 @@ contains
       if (single_level%cos_sza(jcol) > 0.0_jprb) then
         cos_sza = single_level%cos_sza(jcol)
 
-#ifndef _OPENACC
         ! Clear-sky calculation - first compute clear-sky reflectance,
         ! transmittance etc at each model level
         if (.not. config%do_sw_delta_scaling_with_gases) then
-#endif
           ! Delta-Eddington scaling has already been performed to the
           ! aerosol part of od, ssa and g
           call calc_ref_trans_sw(ng*nlev, &
@@ -309,14 +307,17 @@ contains
             &  ref_clear, trans_clear, &
             &  ref_dir_clear, trans_dir_diff_clear, &
             &  trans_dir_dir_clear)
-#ifndef _OPENACC
         else
           ! Apply delta-Eddington scaling to the aerosol-gas mixture
+          !$ACC LOOP SEQ
           do jlev = 1,nlev
-            od_total  =  od(:,jlev,jcol)
-            ssa_total = ssa(:,jlev,jcol)
-            g_total   =   g(:,jlev,jcol)
-            call delta_eddington(od_total, ssa_total, g_total)
+            !$ACC LOOP WORKER VECTOR
+            do jg=1,ng
+              od_total(jg)  =  od(jg,jlev,jcol)
+            ssa_total(jg) = ssa(jg,jlev,jcol)
+            g_total(jg)   =   g(jg,jlev,jcol)
+            call delta_eddington(od_total(jg), ssa_total(jg), g_total(jg))
+            end do
             call calc_two_stream_gammas_sw(ng, &
                  &  cos_sza, ssa_total, g_total, &
                  &  gamma1, gamma2, gamma3)
@@ -328,7 +329,6 @@ contains
                  &  trans_dir_dir_clear(:,jlev) )
           end do
         end if
-#endif
 
         ! Use adding method to compute fluxes
         call adding_ica_sw(ng, nlev, incoming_sw(:,jcol), &
@@ -338,7 +338,7 @@ contains
              &  albedo=tmp_work_albedo, &
              &  source=tmp_work_source, &
              &  inv_denominator=tmp_work_inv_denominator)
-        
+
         ! save temporarily clear-sky broadband fluxes
         !$ACC LOOP SEQ
         do jlev = 1,nlev+1
@@ -374,7 +374,7 @@ contains
              &  cum_cloud_cover=cum_cloud_cover(:,jcol), &
              &  pair_cloud_cover=pair_cloud_cover(:,jcol))
 
-        
+
         if (total_cloud_cover >= config%cloud_fraction_threshold) then
           ! Total-sky calculation
           !$ACC LOOP SEQ
@@ -406,13 +406,11 @@ contains
                   end if
                 end if
               end do
-#ifndef _OPENACC
               ! Apply delta-Eddington scaling to the cloud-aerosol-gas
               ! mixture
               if (config%do_sw_delta_scaling_with_gases) then
                 call delta_eddington(od_total, ssa_total, g_total)
               end if
-#endif
 
               ! Compute cloudy-sky reflectance, transmittance etc at
               ! each model level
@@ -434,7 +432,7 @@ contains
               end do
             end if
           end do
-            
+
           ! Use adding method to compute fluxes for an overcast sky
           call adding_ica_sw(ng, nlev, incoming_sw(:,jcol), &
                &  albedo_diffuse(:,jcol), albedo_direct(:,jcol), &
@@ -443,7 +441,7 @@ contains
                &  albedo=tmp_work_albedo, &
                &  source=tmp_work_source, &
                &  inv_denominator=tmp_work_inv_denominator)
-          
+
           ! Likewise for surface spectral fluxes
           !$ACC LOOP WORKER VECTOR
           do jg = 1,ng
@@ -454,7 +452,7 @@ contains
             flux%sw_dn_direct_surf_g(jg,jcol) = total_cloud_cover *flux%sw_dn_direct_surf_g(jg,jcol) &
                 &     + (1.0_jprb - total_cloud_cover)*flux%sw_dn_direct_surf_clear_g(jg,jcol)
           end do
-          
+
         else
           ! No cloud in profile and clear-sky fluxes already
           ! calculated: copy them over
@@ -509,7 +507,7 @@ contains
 
             ! Store total cloud cover
             total_cloud_cover = flux%cloud_cover_sw(jcol)
-            
+
             if (total_cloud_cover >= config%cloud_fraction_threshold) then
               ! Store overcast broadband fluxes
               sum_up = 0.0_jprb
@@ -527,7 +525,7 @@ contains
               end if
               flux%sw_dn(jcol,jlev) = sum_dn_diffuse + sum_dn_direct
 
-          end if 
+          end if
         end if ! Sun above horizon
       end do ! Loop over columns
     end do
@@ -544,7 +542,7 @@ contains
 
           ! Store total cloud cover
           total_cloud_cover = flux%cloud_cover_sw(jcol)
-          
+
           if (total_cloud_cover >= config%cloud_fraction_threshold) then
             ! Cloudy flux profiles currently assume completely overcast
             ! skies; perform weighted average with clear-sky profile
@@ -556,7 +554,7 @@ contains
               flux%sw_dn_direct(jcol,jlev) = total_cloud_cover *flux%sw_dn_direct(jcol,jlev) &
                   &  + (1.0_jprb - total_cloud_cover)*flux%sw_dn_direct_clear(jcol,jlev)
             end if
-            
+
           else
             ! No cloud in profile and clear-sky fluxes already
             ! calculated: copy them over
@@ -588,7 +586,7 @@ contains
     !$ACC END DATA
 
     if (lhook) call dr_hook('radiation_mcica_acc_sw:solver_mcica_acc_sw',1,hook_handle)
-    
+
   end subroutine solver_mcica_acc_sw
 
 end module radiation_mcica_acc_sw
