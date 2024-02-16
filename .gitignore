@@ -8,3 +8,9 @@ config_*.nam
 /bin/ecrad
 /bin/ecrad_ifs
 /bin/ecrad_ifs_blocked
+driver/test_aerosol_optics_description
+driver/test_cloud_generator
+driver/test_fast_expm
+driver/test_random_number_generator
+driver/test_spartacus_math
+

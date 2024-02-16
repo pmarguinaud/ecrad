@@ -18,7 +18,7 @@ module yomhook
   save
 
   integer, parameter :: jphook = selected_real_kind(13,300)
-  logical :: lhook = .false.
+  logical :: lhook = .true.
   
 contains
 
@@ -27,7 +27,18 @@ contains
     character(len=*), intent(in)    :: proc_name
     integer,          intent(in)    :: iswitch
     real(jphook),     intent(inout) :: proc_key
+    character*16 :: clenv
     ! Do nothing!
+
+    call getenv ('DR_HOOK', clenv)
+    
+    lhook = clenv (1:1) == '1'
+
+    if (.not. lhook) return
+
+    if (iswitch == 0) then
+      print *, proc_name
+    endif
 
   end subroutine dr_hook
 

@@ -9,7 +9,7 @@
 HAVE_NFCONFIG := $(shell nf-config --version 2> /dev/null)
 ifdef HAVE_NFCONFIG
 $(info *** Using nf-config to obtain NetCDF flags)
-NETCDF_INCLUDE = $(shell nf-config --fflags)
+NETCDF_INCLUDE = -I$(shell nf-config --includedir)
 NETCDF_LIB     = $(shell nf-config --flibs)
 ifeq ($(shell nf-config --has-nc4),yes)
 NETCDF4        = 1
