@@ -290,7 +290,7 @@ contains
     !$ACC   reflectance, tmp_work_inv_denominator, tmp_work_albedo, tmp_work_source, &
     !$ACC   scat_od_total, source_dn, source_dn_clear, source_up, source_up_clear, ssa_total, total_cloud_cover, &
     !$ACC   trans_clear, transmittance)
-    do jcol = istartcol,iendcol
+        do jcol = istartcol,iendcol
 
       ! Clear-sky calculation
 #ifndef _OPENACC
