@@ -292,7 +292,7 @@ contains
     !$ACC   ref_dir, ref_dir_clear, reflectance, ssa_total, tmp_work_inv_denominator, tmp_work_albedo, &
     !$ACC   tmp_work_source, trans_clear, trans_dir_diff, trans_dir_diff_clear, &
     !$ACC   trans_dir_dir, trans_dir_dir_clear, transmittance, total_cloud_cover)
-    do jcol = istartcol,iendcol
+        do jcol = istartcol,iendcol
       ! Only perform calculation if sun above the horizon
       if (single_level%cos_sza(jcol) > 0.0_jprb) then
         cos_sza = single_level%cos_sza(jcol)
@@ -314,9 +314,9 @@ contains
             !$ACC LOOP WORKER VECTOR
             do jg=1,ng
               od_total(jg)  =  od(jg,jlev,jcol)
-            ssa_total(jg) = ssa(jg,jlev,jcol)
-            g_total(jg)   =   g(jg,jlev,jcol)
-            call delta_eddington(od_total(jg), ssa_total(jg), g_total(jg))
+              ssa_total(jg) = ssa(jg,jlev,jcol)
+              g_total(jg)   =   g(jg,jlev,jcol)
+              call delta_eddington(od_total(jg), ssa_total(jg), g_total(jg))
             end do
             call calc_two_stream_gammas_sw(ng, &
                  &  cos_sza, ssa_total, g_total, &
@@ -481,7 +481,7 @@ contains
     !$ACC PARALLEL DEFAULT(NONE) ASYNC(1) PRIVATE(sum_dn_diffuse, sum_dn_direct, sum_up) &
     !$ACC   NUM_GANGS((iendcol-istartcol+1)*(nlev+1)) NUM_WORKERS(1) VECTOR_LENGTH(32*((config%n_g_sw-1)/32+1))
     !$ACC LOOP GANG COLLAPSE(2) PRIVATE(cos_sza, total_cloud_cover)
-    do jcol = istartcol,iendcol
+        do jcol = istartcol,iendcol
       do jlev = 1, nlev+1
 
         ! Only perform calculation if sun above the horizon
