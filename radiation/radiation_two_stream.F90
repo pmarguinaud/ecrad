@@ -83,7 +83,7 @@ contains
     if (lhook) call dr_hook('radiation_two_stream:calc_two_stream_gammas_lw',0,hook_handle)
 #endif
 
-    !$ACC LOOP WORKER VECTOR
+    !$ACC LOOP WORKER VECTOR PRIVATE(factor)
 ! Added for DWD (2020)
 !NEC$ shortloop
     do jg = 1, ng
@@ -213,7 +213,8 @@ contains
     !$ACC ROUTINE WORKER
 
 
-    !$ACC LOOP WORKER VECTOR
+    !$ACC LOOP WORKER VECTOR PRIVATE(k_exponent, exponential, exponential2, reftrans_factor, &
+    !$ACC     coeff, coeff_up_top, coeff_up_bot, coeff_dn_top, coeff_dn_bot)
 ! Added for DWD (2020)
 !NEC$ shortloop
     do jg = 1, ng
@@ -445,7 +446,7 @@ contains
     transmittance = exp(-LwDiffusivityWP*od)
 #endif
 
-    !$ACC LOOP WORKER VECTOR
+    !$ACC LOOP WORKER VECTOR PRIVATE(coeff, coeff_up_top, coeff_up_bot, coeff_dn_top, coeff_dn_bot)
     do jg = 1, ng
       ! Compute upward and downward emission assuming the Planck
       ! function to vary linearly with optical depth within the layer
@@ -541,7 +542,7 @@ contains
 
     !$ACC ROUTINE WORKER
 
-    !$ACC LOOP WORKER VECTOR PRIVATE(gamma4, alpha1, alpha2, k_exponent, &
+    !$ACC LOOP WORKER VECTOR PRIVATE(gamma4, alpha1, alpha2, k_exponent, mu0_local, &
     !$ACC   reftrans_factor, exponential0, exponential, exponential2, k_mu0, &
     !$ACC   k_gamma3, k_gamma4, k_2_exponential, od_over_mu0)
 ! Added for DWD (2020)
@@ -798,9 +799,9 @@ contains
     ! GPU-capable and vector-optimized version for ICON
     !$ACC ROUTINE WORKER
 
-    !$ACC LOOP WORKER VECTOR PRIVATE(gamma1, gamma2, gamma3, gamma4, &
+    !$ACC LOOP WORKER VECTOR PRIVATE(factor, gamma1, gamma2, gamma3, gamma4, &
     !$ACC   alpha1, alpha2, k_exponent, &
-    !$ACC   reftrans_factor, exponential, k_mu0, &
+    !$ACC   reftrans_factor, exponential, exponential2, k_mu0, &
     !$ACC   k_gamma3, k_gamma4, k_2_exponential, one_minus_kmu0_sqr)
     do jg = 1, ng
 
