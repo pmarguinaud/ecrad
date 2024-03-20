@@ -33,7 +33,7 @@ rrtm_kgb13.o: yoerrto13.o
 rrtm_kgb14.o: yoerrto14.o
 rrtm_kgb15.o: yoerrto15.o
 rrtm_kgb16.o: yoerrto16.o
-rrtm_prepare_gases.o: parrrtm.o
+rrtm_prepare_gases.o: parrrtm.o 
 rrtm_setcoef_140gp.o: parrrtm.o yoerrtrf.o
 rrtm_taumol1.o: parrrtm.o yoerrta1.o yoerrtm.o yoerrtwn.o
 rrtm_taumol2.o: parrrtm.o yoerrta2.o yoerrtm.o yoerrtwn.o

@@ -161,7 +161,7 @@ clean-deps:
 libifs: libradiation
 	cd ifs && $(MAKE)
 
-libifsaux:
+libifsaux: libdummydrhook
 	cd ifsaux && $(MAKE)
 
 libdummydrhook: libifsaux
