@@ -514,7 +514,7 @@ contains
           &  decorrelation_scaling=config%cloud_inhom_decorr_scaling, &
           &  cloud_fraction_threshold=config%cloud_fraction_threshold, &
           &  use_beta_overlap=config%use_beta_overlap, &
-          &  cloud_cover=flux%cloud_cover_sw(jcol))
+          &  cloud_cov=flux%cloud_cover_sw(jcol))
 
       ! Horizontal migration distances of reflected radiation at the
       ! surface are zero

@@ -54,7 +54,7 @@ USE radiation_config, ONLY :   config_type, &
        &                       IOverlapExponentialRandom,&
        &                       define_sw_albedo_intervals
 USE YOERAD, ONLY : TERAD
-USE YOE_SPECTRAL_PLANCK, ONLY : INIT
+USE YOE_SPECTRAL_PLANCK, ONLY : INIT_SPECTRAL_PLANCK
 
 IMPLICIT NONE
 
@@ -441,7 +441,7 @@ CONTAINS
     ! second emissivity to represent values within it.
     ! CALL YDERAD%YSPECTPLANCK%INIT(2, [ 8.0E-6_JPRB, 13.0E-6_JPRB ], &
     !      &  [ 1,2,1 ])
-    CALL INIT(YDERAD%YSPECTPLANCK, 2, [ 8.0E-6_JPRB, 13.0E-6_JPRB ], &
+    CALL INIT_SPECTRAL_PLANCK(YDERAD%YSPECTPLANCK, 2, [ 8.0E-6_JPRB, 13.0E-6_JPRB ], &
     &  [ 1,2,1 ])
     ! Populate the mapping between the 14 RRTM shortwave bands and the
     ! 6 albedo inputs.

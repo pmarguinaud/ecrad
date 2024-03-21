@@ -243,7 +243,7 @@ contains
         &  v_matrix, u_matrix=u_matrix, decorrelation_scaling=config%cloud_inhom_decorr_scaling, &
         &  cloud_fraction_threshold=config%cloud_fraction_threshold, &
         &  use_beta_overlap=config%use_beta_overlap, &
-        &  cloud_cover=flux%cloud_cover_lw(jcol))
+        &  cloud_cov=flux%cloud_cover_lw(jcol))
 
       ! --------------------------------------------------------
       ! Section 3: Clear-sky calculation

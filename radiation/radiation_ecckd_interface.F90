@@ -18,13 +18,13 @@ module radiation_ecckd_interface
 
   implicit none
 
-  public  :: setup_gas_optics, set_gas_units_ecckd, gas_optics_ecckd !, planck_function
+  public  :: setup_gas_optics_ecckd, set_gas_units_ecckd, gas_optics_ecckd !, planck_function
 
 contains
 
   !---------------------------------------------------------------------
   ! Setup the ecCKD generalized gas optics model
-  subroutine setup_gas_optics(config)
+  subroutine setup_gas_optics_ecckd(config)
 
     use parkind1, only : jprb
     use radiation_config
@@ -145,7 +145,7 @@ contains
 
     if (lhook) call dr_hook('radiation_ecckd_interface:setup_gas_optics',1,hook_handle)
     
-  end subroutine setup_gas_optics
+  end subroutine setup_gas_optics_ecckd
 
 
   !---------------------------------------------------------------------

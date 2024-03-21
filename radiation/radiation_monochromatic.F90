@@ -21,9 +21,9 @@ module radiation_monochromatic
 
   implicit none
 
-  public  :: setup_gas_optics, gas_optics_mono, set_gas_units_mono, &
-       &     setup_cloud_optics, cloud_optics,            &
-       &     setup_aerosol_optics, add_aerosol_optics
+  public  :: setup_gas_optics_mono, gas_optics_mono, set_gas_units_mono, &
+       &     setup_cloud_optics_mono, cloud_optics_mono,            &
+       &     setup_aerosol_optics_mono, add_aerosol_optics_mono
 
 contains
 
@@ -34,7 +34,7 @@ contains
   ! Setup the arrays in the config object corresponding to the
   ! monochromatic gas optics model.  The directory argument is not
   ! used, since no look-up tables need to be loaded.
-  subroutine setup_gas_optics(config, directory)
+  subroutine setup_gas_optics_mono(config, directory)
 
     use radiation_config, only : config_type
     
@@ -64,7 +64,7 @@ contains
     config%i_band_from_reordered_g_sw = 1
     config%i_band_from_reordered_g_lw = 1
 
-  end subroutine setup_gas_optics
+  end subroutine setup_gas_optics_mono
 
 
   !---------------------------------------------------------------------
@@ -80,23 +80,23 @@ contains
   !---------------------------------------------------------------------
   ! Dummy setup routine for cloud optics: in fact, no setup is
   ! required for monochromatic case
-  subroutine setup_cloud_optics(config)
+  subroutine setup_cloud_optics_mono(config)
 
     use radiation_config, only : config_type
     type(config_type), intent(inout) :: config
 
-  end subroutine setup_cloud_optics
+  end subroutine setup_cloud_optics_mono
 
 
   !---------------------------------------------------------------------
   ! Dummy subroutine since no aerosols are represented in
   ! monochromatic case
-  subroutine setup_aerosol_optics(config)
+  subroutine setup_aerosol_optics_mono(config)
 
     use radiation_config,              only : config_type
     type(config_type), intent(inout) :: config
 
-  end subroutine setup_aerosol_optics
+  end subroutine setup_aerosol_optics_mono
 
 
   !---------------------------------------------------------------------
@@ -214,7 +214,7 @@ contains
   !---------------------------------------------------------------------
   ! Compute cloud optical depth, single-scattering albedo and
   ! g factor in the longwave and shortwave
-  subroutine cloud_optics(nlev,istartcol,iendcol, &
+  subroutine cloud_optics_mono(nlev,istartcol,iendcol, &
        &   config, thermodynamics, cloud, & 
        &   od_lw_cloud, ssa_lw_cloud, g_lw_cloud, &
        &   od_sw_cloud, ssa_sw_cloud, g_sw_cloud)
@@ -309,13 +309,13 @@ contains
       call delta_eddington(od_lw_cloud, ssa_lw_cloud, g_lw_cloud)
     end if
 
-  end subroutine cloud_optics
+  end subroutine cloud_optics_mono
 
 
   !---------------------------------------------------------------------
   ! Dummy subroutine since no aerosols are represented in
   ! monochromatic case
-  subroutine add_aerosol_optics(nlev,istartcol,iendcol, &
+  subroutine add_aerosol_optics_mono(nlev,istartcol,iendcol, &
        &  config, thermodynamics, gas, aerosol, & 
        &  od_lw, ssa_lw, g_lw, od_sw, ssa_sw, g_sw)
 
@@ -351,7 +351,7 @@ contains
       g_lw(:,:,istartcol:iendcol)   = 0.0_jprb
     end if
 
-  end subroutine add_aerosol_optics
+  end subroutine add_aerosol_optics_mono
 
   !---------------------------------------------------------------------
   ! Planck function in terms of wavelength

@@ -48,11 +48,11 @@ contains
     ! Currently there are two gas absorption models: RRTMG (default)
     ! and monochromatic
     use radiation_monochromatic,  only : &
-         &   setup_gas_optics_mono     => setup_gas_optics, &
-         &   setup_cloud_optics_mono   => setup_cloud_optics, &
-         &   setup_aerosol_optics_mono => setup_aerosol_optics
+         &   setup_gas_optics_mono     => setup_gas_optics_mono, &
+         &   setup_cloud_optics_mono   => setup_cloud_optics_mono, &
+         &   setup_aerosol_optics_mono => setup_aerosol_optics_mono
     use radiation_ifs_rrtm,       only :  setup_gas_optics_rrtm => setup_gas_optics_rrtm
-    use radiation_ecckd_interface,only :  setup_gas_optics_ecckd => setup_gas_optics
+    use radiation_ecckd_interface,only :  setup_gas_optics_ecckd => setup_gas_optics_ecckd
     use radiation_ifs_rrtmgp,     only :  setup_gas_optics_ifs_rrtmgp
     use radiation_cloud_optics,   only :  setup_cloud_optics
     use radiation_general_cloud_optics, only :  setup_general_cloud_optics
@@ -249,8 +249,8 @@ contains
     ! Treatment of gas and hydrometeor optics
     use radiation_monochromatic,  only : &
          &   gas_optics_mono         => gas_optics_mono, &
-         &   cloud_optics_mono       => cloud_optics, &
-         &   add_aerosol_optics_mono => add_aerosol_optics
+         &   cloud_optics_mono       => cloud_optics_mono, &
+         &   add_aerosol_optics_mono => add_aerosol_optics_mono
     use radiation_ifs_rrtm,       only : gas_optics_rrtm => gas_optics_rrtm
     use radiation_ecckd_interface,only : gas_optics_ecckd => gas_optics_ecckd
     use radiation_ifs_rrtmgp,     only : gas_optics_ifs_rrtmgp => gas_optics_ifs_rrtmgp

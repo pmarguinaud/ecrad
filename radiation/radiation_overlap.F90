@@ -426,7 +426,7 @@ contains
   ! u_matrix and v_matrix.
   subroutine calc_overlap_matrices(nlev, nreg_in, is_clear_sky_layer, &
        &     region_fracs, overlap_param, v_matrix, u_matrix, decorrelation_scaling, &
-       &     cloud_fraction_threshold, cloud_cover, use_beta_overlap)
+       &     cloud_fraction_threshold, cloud_cov, use_beta_overlap)
 
     use parkind1,     only : jprb
     use yomhook,      only : lhook, dr_hook, jphook
@@ -464,7 +464,7 @@ contains
     real(jprb), intent(in), optional :: cloud_fraction_threshold
 
     ! The diagnosed cloud cover is an optional output
-    real(jprb), intent(out), optional :: cloud_cover
+    real(jprb), intent(out), optional :: cloud_cov
 
     ! Do we use Shonk et al.'s (2010) "beta" overlap parameter?
     logical, intent(in), optional :: use_beta_overlap
@@ -609,8 +609,8 @@ contains
     end do ! levels
 
     ! Compute cloud cover from one of the directional overlap matrices
-    if (present(cloud_cover)) then
-      cloud_cover = 1.0_jprb - product(v_matrix(1,1,:))
+    if (present(cloud_cov)) then
+      cloud_cov = 1.0_jprb - product(v_matrix(1,1,:))
     end if
 
     if (lhook) call dr_hook('radiation_overlap:calc_overlap_matrices',1,hook_handle)
@@ -620,7 +620,7 @@ contains
   ! Double-precision version for SPARTACUS_SW
   subroutine calc_overlap_matrices_dp(nlev, nreg_in, is_clear_sky_layer, &
        &     region_fracs, overlap_param, v_matrix, u_matrix, decorrelation_scaling, &
-       &     cloud_fraction_threshold, cloud_cover, use_beta_overlap)
+       &     cloud_fraction_threshold, cloud_cov, use_beta_overlap)
 
     use parkind1,     only : jprd
     use yomhook,      only : lhook, dr_hook, jphook
@@ -658,7 +658,7 @@ contains
     real(jprd), intent(in), optional :: cloud_fraction_threshold
 
     ! The diagnosed cloud cover is an optional output
-    real(jprd), intent(out), optional :: cloud_cover
+    real(jprd), intent(out), optional :: cloud_cov
 
     ! Do we use Shonk et al.'s (2010) "beta" overlap parameter?
     logical, intent(in), optional :: use_beta_overlap
@@ -803,8 +803,8 @@ contains
     end do ! levels
 
     ! Compute cloud cover from one of the directional overlap matrices
-    if (present(cloud_cover)) then
-      cloud_cover = 1.0_jprd - product(v_matrix(1,1,:))
+    if (present(cloud_cov)) then
+      cloud_cov = 1.0_jprd - product(v_matrix(1,1,:))
     end if
 
     if (lhook) call dr_hook('radiation_overlap:calc_overlap_matrices_dp',1,hook_handle)
