@@ -22,7 +22,7 @@ module radiation_ifs_rrtmgp
 
   implicit none
   private
-  public  :: setup_gas_optics_ifs_rrtmgp, gas_optics_ifs_rrtmgp, set_gas_units
+  public  :: setup_gas_optics_ifs_rrtmgp, gas_optics_ifs_rrtmgp, set_gas_units_rrtmgp
 
   ! List of character for case conversion, need this for changing an entry
   ! in a string array
@@ -207,14 +207,14 @@ contains
 
   !---------------------------------------------------------------------
   ! Scale gas mixing ratios according to required units
-  subroutine set_gas_units(gas)
+  subroutine set_gas_units_rrtmgp(gas)
 
   use radiation_gas,           only : gas_type, IVolumeMixingRatio
   type(gas_type),    intent(inout) :: gas
 
   call gas%set_units(IVolumeMixingRatio)
 
-  end subroutine set_gas_units
+  end subroutine set_gas_units_rrtmgp
 
 
   !---------------------------------------------------------------------

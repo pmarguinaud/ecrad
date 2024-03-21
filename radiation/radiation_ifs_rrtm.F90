@@ -25,13 +25,13 @@ module radiation_ifs_rrtm
 
   implicit none
 
-  public  :: setup_gas_optics, gas_optics, planck_function, set_gas_units
+  public  :: setup_gas_optics_rrtm, gas_optics_rrtm, planck_function, set_gas_units_rrtm
 
 contains
 
   !---------------------------------------------------------------------
   ! Setup the IFS implementation of RRTM-G gas absorption model
-  subroutine setup_gas_optics(config, directory)
+  subroutine setup_gas_optics_rrtm(config, directory)
 
     use yoerrtm,   only : jpglw
     use yoesrtm,   only : jpgsw
@@ -195,12 +195,12 @@ contains
 
     if (lhook) call dr_hook('radiation_ifs_rrtm:setup_gas_optics',1,hook_handle)
 
-  end subroutine setup_gas_optics
+  end subroutine setup_gas_optics_rrtm
 
 
   !---------------------------------------------------------------------
   ! Scale gas mixing ratios according to required units
-  subroutine set_gas_units(gas, lacc)
+  subroutine set_gas_units_rrtm(gas, lacc)
 
     use radiation_gas,           only : gas_type, IMassMixingRatio
     type(gas_type),    intent(inout) :: gas
@@ -208,13 +208,13 @@ contains
 
     call gas%set_units(IMassMixingRatio, lacc=lacc)
 
-  end subroutine set_gas_units
+  end subroutine set_gas_units_rrtm
 
 
   !---------------------------------------------------------------------
   ! Compute gas optical depths, shortwave scattering, Planck function
   ! and incoming shortwave radiation at top-of-atmosphere
-  subroutine gas_optics(ncol,nlev,istartcol,iendcol, &
+  subroutine gas_optics_rrtm(ncol,nlev,istartcol,iendcol, &
        &  config, single_level, thermodynamics, gas, &
        &  od_lw, od_sw, ssa_sw, lw_albedo, planck_hl, lw_emission, &
        &  incoming_sw)
@@ -724,7 +724,7 @@ contains
 
     if (lhook) call dr_hook('radiation_ifs_rrtm:gas_optics',1,hook_handle)
 
-  end subroutine gas_optics
+  end subroutine gas_optics_rrtm
 
 
   !---------------------------------------------------------------------

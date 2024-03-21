@@ -21,7 +21,7 @@ module radiation_monochromatic
 
   implicit none
 
-  public  :: setup_gas_optics, gas_optics, set_gas_units, &
+  public  :: setup_gas_optics, gas_optics_mono, set_gas_units_mono, &
        &     setup_cloud_optics, cloud_optics,            &
        &     setup_aerosol_optics, add_aerosol_optics
 
@@ -69,12 +69,12 @@ contains
 
   !---------------------------------------------------------------------
   ! Dummy routine for scaling gas mixing ratios
-  subroutine set_gas_units(gas)
+  subroutine set_gas_units_mono(gas)
 
     use radiation_gas,           only : gas_type
     type(gas_type),    intent(inout) :: gas
 
-  end subroutine set_gas_units
+  end subroutine set_gas_units_mono
 
 
   !---------------------------------------------------------------------
@@ -102,7 +102,7 @@ contains
   !---------------------------------------------------------------------
   ! Compute gas optical depths, shortwave scattering, Planck function
   ! and incoming shortwave radiation at top-of-atmosphere
-  subroutine gas_optics(ncol,nlev,istartcol,iendcol, &
+  subroutine gas_optics_mono(ncol,nlev,istartcol,iendcol, &
        config, single_level, thermodynamics, gas, lw_albedo, & 
        od_lw, od_sw, ssa_sw, planck_hl, lw_emission, &
        incoming_sw)
@@ -208,7 +208,7 @@ contains
       lw_emission = transpose(single_level%lw_emission)
     end if
 
-  end subroutine gas_optics
+  end subroutine gas_optics_mono
 
 
   !---------------------------------------------------------------------

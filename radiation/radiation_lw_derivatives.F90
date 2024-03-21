@@ -43,7 +43,7 @@ module radiation_lw_derivatives
 #define ng ng_lw_in
 #endif
 
-  integer, parameter :: nreg = 3
+  integer, parameter, private :: nreg = 3
 
 
 contains

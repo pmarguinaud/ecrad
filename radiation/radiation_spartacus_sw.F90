@@ -77,7 +77,7 @@ contains
        &  albedo_direct, albedo_diffuse, incoming_sw, &
        &  flux)
 
-    use parkind1, only           : jprb
+    use parkind1, only           : jprb, jprd
     use yomhook,  only           : lhook, dr_hook, jphook
 
     use radiation_io, only             : nulout
@@ -309,11 +309,7 @@ contains
 
     real(jphook) :: hook_handle
 
-#ifdef PARKIND1_SINGLE
-    real(jprb), parameter :: coeff = 1000.0_jprb * 100.0_jprb * epsilon(1.0_jprb)
-#else
-    real(jprb), parameter :: coeff = 100.0_jprb * epsilon(1.0_jprb)
-#endif
+    real(jprb), parameter :: coeff = merge (1000.0_jprb, 1.0_jprb, jprd /= jprb) * 100.0_jprb * epsilon(1.0_jprb)
 
     ! New for optimized SPARTACUS
     ! VARIABLES FOR BATCHED COMPUTATIONS

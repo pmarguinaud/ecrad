@@ -39,14 +39,9 @@ module radiation_two_stream
   real(jprb), parameter :: LwDiffusivityWP = 1.66_jprb ! Working precision version
 
   ! Make minimum k value depend on precision, allowing to avoid JPRD altogether
-#ifdef PARKIND1_SINGLE
   ! real(jprb), parameter :: KMin = 1.e4_jprb * epsilon(1._jprb)
-  real(jprb), parameter :: KMinSw = 1.e-4_jprb
-  real(jprb), parameter :: KMinLw = 1.e-4_jprb
-#else
-  real(jprb), parameter :: KMinSw = 1.e-12_jprb
-  real(jprb), parameter :: KMinLw = 1.e-12_jprb
-#endif
+  real(jprb), parameter :: KMinSw = merge (1.e-4_jprb, 1.e-12_jprb, jprb /= jprd)
+  real(jprb), parameter :: KMinLw = merge (1.e-4_jprb, 1.e-12_jprb, jprb /= jprd)
   ! The routines in this module can be called millions of times, so
   ! calling Dr Hook for each one may be a significant overhead.
   ! Uncomment the following to turn Dr Hook on.
@@ -829,11 +824,7 @@ contains
 
       alpha1 = gamma1*gamma4 + gamma2*gamma3 ! Eq. 16
       alpha2 = gamma1*gamma3 + gamma2*gamma4 ! Eq. 17
-#ifdef PARKIND1_SINGLE
-      k_exponent = sqrt(max((gamma1 - gamma2) * (gamma1 + gamma2), 1.0e-6_jprb))  ! Eq 18
-#else
-      k_exponent = sqrt(max((gamma1 - gamma2) * (gamma1 + gamma2), 1.0e-12_jprb)) ! Eq 18
-#endif
+      k_exponent = sqrt(max((gamma1 - gamma2) * (gamma1 + gamma2), merge (1.0e-6_jprb, 1.0e-12_jprb, jprb /= jprd)))  ! Eq 18
 
       exponential = exp(-k_exponent*od(jg))
 

@@ -39,13 +39,13 @@ module radiation_cloud_optics_data
           &  liq_coeff_gen, ice_coeff_gen
 
    contains
-     procedure :: setup => setup_cloud_optics
+     procedure :: setup => setup_cloud_optics_data
 #ifdef _OPENACC
      procedure :: create_device
      procedure :: update_host
      procedure :: update_device
      procedure :: delete_device
-#endif _OPENACC
+#endif
 
   end type cloud_optics_type
 
@@ -53,7 +53,7 @@ contains
 
   !---------------------------------------------------------------------
   ! Setup cloud optics coefficients by reading them from a file
-  subroutine setup_cloud_optics(this, liq_file_name, ice_file_name, iverbose)
+  subroutine setup_cloud_optics_data(this, liq_file_name, ice_file_name, iverbose)
 
     use yomhook,              only : lhook, dr_hook, jphook
 #ifdef EASY_NETCDF_READ_MPI
@@ -114,7 +114,7 @@ contains
 
     if (lhook) call dr_hook('radiation_cloud_optics_data:setup',1,hook_handle)
 
-  end subroutine setup_cloud_optics
+  end subroutine setup_cloud_optics_data
 
 #ifdef _OPENACC
 

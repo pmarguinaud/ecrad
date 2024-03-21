@@ -366,7 +366,7 @@ contains
 #ifndef _OPENACC
           sw_albedo_direct = transpose(sw_albedo_band(istartcol:iendcol, &
                &                             config%i_band_from_reordered_g_sw))
-        #else
+#else
         !$ACC LOOP GANG(STATIC:1) VECTOR
         do jcol = istartcol,iendcol
           !$ACC LOOP SEQ

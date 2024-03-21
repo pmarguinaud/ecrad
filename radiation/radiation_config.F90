@@ -38,7 +38,7 @@
 
 module radiation_config
 
-  use parkind1,                      only : jprb
+  use parkind1,                      only : jprb, jprd
 
   use radiation_cloud_optics_data,   only : cloud_optics_type
   use radiation_general_cloud_optics_data,   only : general_cloud_optics_type
@@ -256,13 +256,8 @@ module radiation_config
     ! Maximum total optical depth of a cloudy region for stability:
     ! optical depth will be capped at this value in the SPARTACUS
     ! solvers
-#ifdef PARKIND1_SINGLE
-    real(jprb) :: max_cloud_od_lw = 10.3_jprb
-    real(jprb) :: max_cloud_od_sw = 11.5_jprb
-#else
-    real(jprb) :: max_cloud_od_sw = 16.0_jprb
-    real(jprb) :: max_cloud_od_lw = 16.0_jprb
-#endif
+    real(jprb) :: max_cloud_od_lw = merge (10.3_jprb, 16.0_jprb, jprb /= jprd)
+    real(jprb) :: max_cloud_od_sw = merge (11.5_jprb, 16.0_jprb, jprb /= jprd)
     ! How much longwave scattering is included?
     logical :: do_lw_cloud_scattering = .true.
     logical :: do_lw_aerosol_scattering = .true.
@@ -391,11 +386,7 @@ module radiation_config
     ! high for the clear-sky regions in layers with high cloud
     ! fraction.  For stability reasons it is necessary to provide a
     ! maximum possible 3D transfer rate.
-#ifdef PARKIND1_SINGLE
-    real(jprb) :: max_3d_transfer_rate = 2.0_jprb
-#else
-    real(jprb) :: max_3d_transfer_rate = 10.0_jprb
-#endif
+    real(jprb) :: max_3d_transfer_rate = merge (2.0_jprb, 10.0_jprb, jprd /= jprb)
     ! It has also sometimes been found necessary to set a minimum
     ! cloud effective size for stability (metres)
     real(jprb) :: min_cloud_effective_size = 500.0_jprb

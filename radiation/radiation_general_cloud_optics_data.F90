@@ -55,7 +55,7 @@ module radiation_general_cloud_optics_data
     logical :: use_bands = .false.
 
    contains
-     procedure :: setup => setup_general_cloud_optics
+     procedure :: setup => setup_general_cloud_optics_data
      procedure :: add_optical_properties
      procedure :: save => save_general_cloud_optics_data
 
@@ -68,7 +68,7 @@ contains
 
   !---------------------------------------------------------------------
   ! Setup cloud optics coefficients by reading them from a file
-  subroutine setup_general_cloud_optics(this, file_name, specdef, &
+  subroutine setup_general_cloud_optics_data(this, file_name, specdef, &
        &                                use_bands, use_thick_averaging, &
        &                                weighting_temperature, &
        &                                iverbose)
@@ -237,7 +237,7 @@ contains
 
     if (lhook) call dr_hook('radiation_general_cloud_optics_data:setup',1,hook_handle)
 
-  end subroutine setup_general_cloud_optics
+  end subroutine setup_general_cloud_optics_data
 
 
   !---------------------------------------------------------------------

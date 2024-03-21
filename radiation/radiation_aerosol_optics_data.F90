@@ -136,7 +136,7 @@ module radiation_aerosol_optics_data
      logical :: use_monochromatic = .false.
 
    contains
-     procedure :: setup => setup_aerosol_optics
+     procedure :: setup => setup_aerosol_optics_data
      procedure :: save  => save_aerosol_optics
      procedure :: allocate
      procedure :: initialize_types
@@ -161,7 +161,7 @@ contains
 
   !---------------------------------------------------------------------
   ! Setup aerosol optics coefficients by reading them from a file
-  subroutine setup_aerosol_optics(this, file_name, iverbose)
+  subroutine setup_aerosol_optics_data(this, file_name, iverbose)
 
     use yomhook,              only : lhook, dr_hook, jphook
 #ifdef EASY_NETCDF_READ_MPI
@@ -319,7 +319,7 @@ contains
 
     if (lhook) call dr_hook('radiation_aerosol_optics_data:setup',1,hook_handle)
 
-  end subroutine setup_aerosol_optics
+  end subroutine setup_aerosol_optics_data
 
 
   !---------------------------------------------------------------------

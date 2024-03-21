@@ -18,7 +18,7 @@ module radiation_ecckd_interface
 
   implicit none
 
-  public  :: setup_gas_optics, set_gas_units, gas_optics !, planck_function
+  public  :: setup_gas_optics, set_gas_units_ecckd, gas_optics_ecckd !, planck_function
 
 contains
 
@@ -150,7 +150,7 @@ contains
 
   !---------------------------------------------------------------------
   ! Scale gas mixing ratios according to required units
-  subroutine set_gas_units(gas, lacc)
+  subroutine set_gas_units_ecckd(gas, lacc)
 
     use radiation_gas, only : gas_type, IVolumeMixingRatio
     use yomhook,       only : lhook, dr_hook, jphook
@@ -160,19 +160,19 @@ contains
 
     real(jphook) :: hook_handle
 
-    if (lhook) call dr_hook('radiation_ecckd_interface:set_gas_units',0,hook_handle)
+    if (lhook) call dr_hook('radiation_ecckd_interface:set_gas_units_ecckd',0,hook_handle)
 
     call gas%set_units(IVolumeMixingRatio, lacc=lacc)
 
-    if (lhook) call dr_hook('radiation_ecckd_interface:set_gas_units',1,hook_handle)
+    if (lhook) call dr_hook('radiation_ecckd_interface:set_gas_units_ecckd',1,hook_handle)
 
-  end subroutine set_gas_units
+  end subroutine set_gas_units_ecckd
 
 
   !---------------------------------------------------------------------
   ! Compute gas optical depths, shortwave scattering, Planck function
   ! and incoming shortwave radiation at top-of-atmosphere
-  subroutine gas_optics(ncol,nlev,istartcol,iendcol, &
+  subroutine gas_optics_ecckd(ncol,nlev,istartcol,iendcol, &
        &  config, single_level, thermodynamics, gas, & 
        &  od_lw, od_sw, ssa_sw, lw_albedo, planck_hl, lw_emission, &
        &  incoming_sw)
@@ -322,7 +322,7 @@ contains
 
     if (lhook) call dr_hook('radiation_ecckd_interface:gas_optics',1,hook_handle)
     
-  end subroutine gas_optics
+  end subroutine gas_optics_ecckd
 
   ! !---------------------------------------------------------------------
   ! ! Externally facing function for computing the Planck function
