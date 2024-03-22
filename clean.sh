@@ -1,7 +1,7 @@
 #!/bin/bash
 
-rm */*_cpu.intfb.h
-rm */*_gpu.intfb.h
-rm */*_cpu.F90
-rm */*_gpu.F90
-rm */*.xml
+\rm -f */*_cpu.intfb.h
+\rm -f */*_gpu.intfb.h
+\rm -f */*_cpu.F90
+\rm -f */*_gpu.F90
+\rm -f */*.xml

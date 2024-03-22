@@ -26,6 +26,48 @@ sub slurp
   return $text;
 }
 
+sub nvtx
+{
+  my $F90 = shift;
+
+  my $d = &Fxtran::parse (location => $F90, fopts => [qw (-construct-tag -no-include -line-length 500)]);
+
+  my @call = (&F ('.//call-stmt[starts-with(string(procedure-designator),"nvtx")]', $d),
+              &F ('.//call-stmt[string(procedure-designator)="acc_attach"]', $d));
+ 
+  my @use = &F ('.//use-stmt[string(module-N)="nvtx" or string(module-N)="NVTX"]', $d);
+
+  for my $stmt (@call, @use)
+    {
+      my $indent = &Fxtran::getIndent ($stmt);
+      my $p = $stmt->parentNode;
+
+      $p->insertBefore ($_, $stmt)
+        for (&t ("\n"), &n ("<cpp>#ifdef __PGI</cpp>"), &t ("\n" . (' ' x $indent)));
+
+      $p->insertAfter ($_, $stmt)
+        for (&n ("<cpp>#endif</cpp>"), &t ("\n"));
+
+    }
+
+  @use = &F ('.//use-stmt[string(module-N)="openacc" or string(module-N)="OPENACC"]', $d);
+ 
+  for my $stmt (@use)
+    {
+      my $indent = &Fxtran::getIndent ($stmt);
+      my $p = $stmt->parentNode;
+
+      $p->insertBefore ($_, $stmt)
+        for (&t ("\n"), &n ("<cpp>#ifdef _OPENACC</cpp>"), &t ("\n" . (' ' x $indent)));
+
+      $p->insertAfter ($_, $stmt)
+        for (&n ("<cpp>#endif</cpp>"), &t ("\n"));
+
+    }
+
+  'FileHandle'->new (">$F90")->print ($d->textContent);
+}
+
 sub insertMethods
 {
   my ($t, $suff, @p) = @_;
@@ -112,6 +154,8 @@ sub mergeF90
 {
   my ($F90, $dir) = @_;
   
+  my $F90out = "$dir/$F90";
+
   my @F90 = (map { my $f90 = $F90; my $suff = $_; $f90 =~ s/\.F90$/$suff.F90/o; $f90 } @suff);
   
   unshift (@F90, $F90[0]);
@@ -176,12 +220,11 @@ sub mergeF90
         }
 
       
-      &mkpath (&dirname ("$dir/$F90"));
-      'FileHandle'->new (">$dir/$F90")->print ($d[0]->textContent);
+      &mkpath (&dirname ($F90out));
+      'FileHandle'->new ('>' . $F90out)->print ($d[0]->textContent);
     }
   elsif ($first->nodeName eq 'program-stmt')
     {
-      &mkpath (&dirname ("$dir/$F90"));
       
       my $n;
 
@@ -197,7 +240,8 @@ sub mergeF90
           ($n = $N) =~ s/_(?:CPU|GPU)$//o;
         }
      
-      my $fh = 'FileHandle'->new (">$dir/$F90");
+      &mkpath (&dirname ($F90out));
+      my $fh = 'FileHandle'->new ('>' . $F90out);
 
       $fh->print (<< "EOF");
 PROGRAM $n
@@ -232,13 +276,15 @@ EOF
     }
   elsif ($first->nodeName eq 'subroutine-stmt')
     {
-      &mkpath (&dirname ("$dir/$F90"));
-      'FileHandle'->new (">$dir/$F90")->print (join ("\n", $d[1]->textContent, "", $d[2]->textContent));
+      &mkpath (&dirname ($F90out));
+      'FileHandle'->new ('>' . $F90out)->print (join ("\n", $d[1]->textContent, "", $d[2]->textContent));
     }
   else
     {
       die;
     }
+
+  &nvtx ($F90out);
 }
 
 sub mergeIntfb
