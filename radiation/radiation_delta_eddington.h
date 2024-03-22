@@ -19,6 +19,8 @@
 ! Perform in-place delta-Eddington scaling of the phase function
 elemental subroutine delta_eddington(od, ssa, g)
 
+  !$ACC ROUTINE SEQ
+
   use parkind1, only : jprb
 
   ! Total optical depth, single scattering albedo and asymmetry

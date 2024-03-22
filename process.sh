@@ -2,7 +2,15 @@
 
 set -e
 
-all=$1
+dir=$1
+
+if [ "x$dir" = "x" ]
+then
+  echo "Usage: $0 dir"
+  exit 1
+fi
+
+all=$2
 
 if [ "x$all" = "x" ]
 then
@@ -151,7 +159,7 @@ do
   then
 
     ./split.pl $f
-    ./merge.pl $f
+    ./merge.pl $f $dir
 
     b=$(basename $f .F90)
     h=include/$b.intfb.h
@@ -160,7 +168,7 @@ do
     then
       echo "==> $h <=="
       ./split.pl $h
-      ./merge.pl $h
+      ./merge.pl $h $dir
     fi
 
   fi

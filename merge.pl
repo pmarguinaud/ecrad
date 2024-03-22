@@ -18,7 +18,6 @@ use Common;
 use Fxtran;
 
 my @suff = qw (_gpu _cpu);
-my $DIR = '/home/sor/ecrad/cpu';
 
 sub slurp
 {
@@ -111,7 +110,7 @@ sub mergeType
 
 sub mergeF90
 {
-  my $F90 = shift;
+  my ($F90, $dir) = @_;
   
   my @F90 = (map { my $f90 = $F90; my $suff = $_; $f90 =~ s/\.F90$/$suff.F90/o; $f90 } @suff);
   
@@ -177,12 +176,12 @@ sub mergeF90
         }
 
       
-      &mkpath (&dirname ("$DIR/$F90"));
-      'FileHandle'->new (">$DIR/$F90")->print ($d[0]->textContent);
+      &mkpath (&dirname ("$dir/$F90"));
+      'FileHandle'->new (">$dir/$F90")->print ($d[0]->textContent);
     }
   elsif ($first->nodeName eq 'program-stmt')
     {
-      &mkpath (&dirname ("$DIR/$F90"));
+      &mkpath (&dirname ("$dir/$F90"));
       
       my $n;
 
@@ -198,7 +197,7 @@ sub mergeF90
           ($n = $N) =~ s/_(?:CPU|GPU)$//o;
         }
      
-      my $fh = 'FileHandle'->new (">$DIR/$F90");
+      my $fh = 'FileHandle'->new (">$dir/$F90");
 
       $fh->print (<< "EOF");
 PROGRAM $n
@@ -233,8 +232,8 @@ EOF
     }
   elsif ($first->nodeName eq 'subroutine-stmt')
     {
-      &mkpath (&dirname ("$DIR/$F90"));
-      'FileHandle'->new (">$DIR/$F90")->print (join ("\n", $d[1]->textContent, "", $d[2]->textContent));
+      &mkpath (&dirname ("$dir/$F90"));
+      'FileHandle'->new (">$dir/$F90")->print (join ("\n", $d[1]->textContent, "", $d[2]->textContent));
     }
   else
     {
@@ -244,23 +243,23 @@ EOF
 
 sub mergeIntfb
 {
-  my $intfb = shift;
+  my ($intfb, $dir) = @_;
   
   my @intfb = (map { my $f = $intfb; my $suff = $_; $f =~ s/\.intfb.h$/$suff.intfb.h/o; $f } @suff);
   
-  'FileHandle'->new (">$DIR/$intfb")->print (join ("\n", map { &slurp ($_) } @intfb));
+  'FileHandle'->new (">$dir/$intfb")->print (join ("\n", map { &slurp ($_) } @intfb));
 }
 
-my ($file) = @ARGV;
+my ($file, $dir) = @ARGV;
 
 
 if ($file =~ m/\.F90$/o)
   {
-    &mergeF90 ($file);
+    &mergeF90 ($file, $dir);
   }
 elsif ($file =~ m/\.intfb.h$/o)
   {
-    &mergeIntfb ($file);
+    &mergeIntfb ($file, $dir);
   }
 else
   {
