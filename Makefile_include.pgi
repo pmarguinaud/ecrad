@@ -7,7 +7,7 @@ else
 OPTFLAGS = -O0
 endif
 
-WARNFLAGS = -Minform=inform
+WARNFLAGS = -Minform=inform -Minfo=all
 
 # We used to have the flag "-Mbyteswapio" here because the RRTM input
 # files are big endian Fortran unformatted files and most machines are
