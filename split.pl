@@ -175,8 +175,10 @@ sub splitF90
     {
       my $suff = $openacc ? '_gpu' : '_cpu';
   
-      my $d = &Fxtran::parse (location => $F90, fopts => [qw (-construct-tag -no-include -line-length 500), 
-                              $openacc ? qw (-D_OPENACC -DDWD_TWO_STREAM_OPTIMIZATIONS): ()]);
+      my $d = &Fxtran::parse (location => $F90, 
+                              fopts => [qw (-construct-tag -no-include -line-length 500), 
+                                        $openacc ? qw (-D_OPENACC -DDWD_TWO_STREAM_OPTIMIZATIONS): (),
+                                        qw (-DNC_NETCDF4 -DBITIDENTITY_TESTING)]);
 
       $_->unbindNode ()
         for (&F ('.//cpp-section', $d));

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 all=$1
 
 if [ "x$all" = "x" ]
