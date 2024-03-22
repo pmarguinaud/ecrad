@@ -18,7 +18,7 @@ use Common;
 use Fxtran;
 
 my @suff = qw (_gpu _cpu);
-my $DIR = '/home/sor/ecrad/mix';
+my $DIR = '/home/sor/ecrad/cpu';
 
 sub slurp
 {
