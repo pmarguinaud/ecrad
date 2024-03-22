@@ -69,7 +69,7 @@ inlib_SOURCES+=radiation_two_stream.F90
 inlib_FUNCTIONS+=calc_ref_trans_sw calc_ref_trans_lw calc_reflectance_transmittance_sw calc_no_scattering_transmittance_lw calc_two_stream_gammas_sw
 
 , := ,
-inlib_FUNCTIONS:=$(subst $(eval) ,$(,),$(foreach f,$(inlib_FUNCTIONS),name:$(f)))
+inlib_FUNCTIONS:=$(subst $(eval) ,$(,),$(foreach f,$(inlib_FUNCTIONS),name:$(f),name:$(f)_cpu,name:$(f)_gpu))
 inlib_extract_FCFLAGS:= -Mextract=lib:$(inlib_name),reshape,$(inlib_FUNCTIONS)
 inlib_inline_FCFLAGS:= -Minline=lib:$(inlib_name),reshape,$(inlib_FUNCTIONS) -Mneginfo=inline
 
