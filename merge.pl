@@ -221,7 +221,8 @@ sub mergeF90
 
       
       &mkpath (&dirname ($F90out));
-      'FileHandle'->new ('>' . $F90out)->print ($d[0]->textContent);
+
+      &updateFile (file => $F90out, data => $d[0]->textContent);
     }
   elsif ($first->nodeName eq 'program-stmt')
     {
@@ -249,6 +250,7 @@ PROGRAM $n
 IMPLICIT NONE
 
 CHARACTER*16 :: CLARCH
+LOGICAL :: LACC
 
 CALL GETENV ('ARCH', CLARCH)
 
@@ -277,7 +279,7 @@ EOF
   elsif ($first->nodeName eq 'subroutine-stmt')
     {
       &mkpath (&dirname ($F90out));
-      'FileHandle'->new ('>' . $F90out)->print (join ("\n", $d[1]->textContent, "", $d[2]->textContent));
+      &updateFile (file => $F90out, data => join ("\n", $d[1]->textContent, "", $d[2]->textContent));
     }
   else
     {
@@ -293,7 +295,20 @@ sub mergeIntfb
   
   my @intfb = (map { my $f = $intfb; my $suff = $_; $f =~ s/\.intfb.h$/$suff.intfb.h/o; $f } @suff);
   
-  'FileHandle'->new (">$dir/$intfb")->print (join ("\n", map { &slurp ($_) } @intfb));
+  &updateFile (file => "$dir/$intfb", data => join ("\n", map { &slurp ($_) } @intfb));
+}
+
+sub updateFile
+{
+  my %args = @_;
+  
+  my $data = -f $args{file} ? &slurp ($args{file}) : '';
+
+  if ($data ne $args{data})
+    {
+      'FileHandle'->new (">$args{file}")->print ($args{data});
+    }
+
 }
 
 my ($file, $dir) = @ARGV;

@@ -406,9 +406,9 @@ program ecrad_ifs_driver
 
         !$acc data create(zrgp(:,:,ib)) &
 #ifdef BITIDENTITY_TESTING
-        !$acc&     copyin(iseed(:,ib)) &
+        !$acc&     copyin(iseed(:,ib)) 
 #endif
-        !$acc&
+
 
         !$acc update device(zrgp(1:il,:,ib))
         ! Call the ECRAD radiation scheme

@@ -159,6 +159,7 @@ do
   then
 
     ./split.pl $f
+    ./lacc.pl $f
     ./merge.pl $f $dir
 
     b=$(basename $f .F90)
@@ -168,6 +169,7 @@ do
     then
       echo "==> $h <=="
       ./split.pl $h
+      ./lacc.pl $h
       ./merge.pl $h $dir
     fi
 
