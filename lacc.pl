@@ -94,9 +94,29 @@ sub process
   my %skip_call = map { (lc ($_), 1) } @skip_call;
 
   my @call = &F ('.//call-stmt', $d);
+
+  my $getlaccval = sub
+  {
+    my $node = shift;
+    my @pu = &F ('ancestor::program-unit', $node);
+    my $pu = pop (@pu);
+    
+    my $laccval = 'lacc';
+
+    my $stmt = $pu->firstChild;
+    if ($stmt->nodeName eq 'subroutine-stmt')
+      {
+        my ($N) = &F ('./subroutine-N', $stmt, 1);
+        $laccval = '.false.' if (lc ($N) eq 'read_input_gpu');
+      }
+
+    return &e ($laccval);
+  };
   
   for my $call (@call)
     {
+      my $laccval = $getlaccval->($call);
+
       my ($proc) = &F ('./procedure-designator', $call, 1);
       
       $proc =~ s/.*%//o;
@@ -112,10 +132,14 @@ sub process
           my @arg = &F ('./arg', $argspec, 1);
           next if (grep { (lc ($_) eq 'lacc') || (lc ($_) eq 'lacc=lacc')  || (lc ($_) eq 'lacc=llacc') } @arg);
 
-          if (grep { lc ($_) =~ m/^lacc=/o } @arg)
+          if (grep { lc ($_) eq 'lacc=.true.' } @arg)
             {
               my ($arg) = grep { lc ($_->textContent) =~ m/^lacc=/o } &F ('./arg', $argspec);
-              $arg->replaceNode (&n ('<arg><arg-N><k>lacc</k></arg-N>=<named-E><N><n>lacc</n></N></named-E></arg>'));
+              $arg->replaceNode (&n ("<arg><arg-N><k>lacc</k></arg-N>=$laccval</arg>"));
+              next;
+            }
+          if (grep { lc ($_) eq 'lacc=.false.' } @arg)
+            {
               next;
             }
 
@@ -127,7 +151,7 @@ sub process
           $call->appendChild ($_) for (&t ('('), $argspec, &t (')'));
         }
   
-      $argspec->appendChild (&n ('<arg><arg-N><k>lacc</k></arg-N>=<named-E><N><n>lacc</n></N></named-E></arg>'));
+      $argspec->appendChild (&n ("<arg><arg-N><k>lacc</k></arg-N>=$laccval</arg>"));
     }
   
   my @expr = &F ('.//named-E[./R-LT/parens-R]', $d);
@@ -137,12 +161,14 @@ sub process
 
   for my $expr (@expr)
     {
+      my $laccval = $getlaccval->($expr);
+
       my ($N) = &F ('./N', $expr, 1);
       next unless ($N =~ s/_gpu$//io);
       next if ($skip_func{lc ($N)});
       my ($elt) = &F ('./R-LT/parens-R/element-LT', $expr);
       $elt->appendChild (&t (', '));
-      $elt->appendChild (&e ('lacc'));
+      $elt->appendChild (&n ("$laccval"));
     }
 
   my @meth = qw (find min_wavenumber max_wavenumber out_of_physical_bounds);
@@ -152,12 +178,14 @@ sub process
       my @n = (&F ('.//component-R/ct/text()[translate(string(.),"abcdefghijklmnopqrstuvwxyz","ABCDEFGHIJKLMNOPQRSTUVWXYZ")="?"]', uc ($meth . '_gpu'), $d));
       for my $n (@n)
         {
+          my $laccval = $getlaccval->($n);
+
           my $c = $n->parentNode->parentNode->parentNode;
           my @r = &F ('./ANY-R', $c);
           my $p = $r[-1];
           my ($elt) = &F ('./element-LT', $p);
           $elt->appendChild (&t (', ')) if ($elt->childNodes ());
-          $elt->appendChild (&e ('lacc'));
+          $elt->appendChild (&n ("$laccval"));
         }
     }
 

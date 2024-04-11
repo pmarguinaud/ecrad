@@ -155,7 +155,7 @@ do
 
   echo "==> $f <=="
 
-  if [ /home/sor/ecrad/mix/$f -ot $f ] || [ $all -eq 1 ]
+  if [ /home/sor/ecrad/mix/$f -ot $f ] || [ $all == "1" ] 
   then
 
     ./split.pl $f
