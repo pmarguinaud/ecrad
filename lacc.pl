@@ -191,6 +191,37 @@ sub process
 
 }
 
+sub addIfClause
+{
+  my $d = shift;
+
+  my @acc = &F ('.//ANY-openacc', $d);
+
+  my @d = qw (DATA DECLARE ENTER-DATA EXIT-DATA KERNELS PARALLEL UPDATE WAIT PARALLEL-LOOP);
+  my %d = map { (lc ($_) . '-openacc', 1) } @d;
+
+  for my $acc (@acc)
+    {
+      next unless ($d{$acc->nodeName});
+      my ($if) = &F ('./clause[string(N)="IF" or string(N)="if"]', $acc);
+
+      if (! $if)
+        {
+          $acc->appendChild (&t (' '));
+          $acc->appendChild (&n ('<clause><N>IF</N>(<named-E><N><n>lacc</n></N></named-E>)</clause>'));
+        }
+      elsif (! ($if->textContent =~ m/\b(?:lacc|llacc)\b/io))
+        {
+          my ($e) = &F ('./ANY-E', $if);
+
+          $e or die $if;
+
+          $e->replaceNode (&e ('(' . $e->textContent . ') .AND. lacc'));
+        }
+    }
+
+}
+
 
 my $f = shift;
 
@@ -206,6 +237,8 @@ if ($f =~ m/\.F90$/o)
     my $d = &Fxtran::parse (location => $F90, fopts => [qw (-construct-tag -no-include -line-length 500 -openacc)]);
 
     &process ($d);
+ 
+    &addIfClause ($d);
 
 #   print $d->textContent;
     'FileHandle'->new (">$F90")->print ($d->textContent);
