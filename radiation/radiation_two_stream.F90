@@ -313,8 +313,8 @@ contains
 
     !$ACC ROUTINE WORKER
 
-    !$ACC DATA CREATE(gamma1_loc) IF(.not. PRESENT(gamma1_out))
-    !$ACC DATA CREATE(gamma2_loc) IF(.not. PRESENT(gamma2_out))
+
+
 
     associate (exponential=>transmittance, k_exponent=>source_up)
 
@@ -384,8 +384,8 @@ contains
 
     end associate
 
-    !$ACC END DATA
-    !$ACC END DATA
+
+
 
 #ifdef DO_DR_HOOK_TWO_STREAM
     if (lhook) call dr_hook('radiation_two_stream:calc_ref_trans_lw',1,hook_handle)
