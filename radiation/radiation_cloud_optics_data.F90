@@ -17,10 +17,10 @@
 
 module radiation_cloud_optics_data
 
-  use parkind1, only : jprb
+  use parkind1
 
   implicit none
-  public
+  
 
   !---------------------------------------------------------------------
   ! This type holds the configuration information to compute
@@ -39,13 +39,23 @@ module radiation_cloud_optics_data
           &  liq_coeff_gen, ice_coeff_gen
 
    contains
-     procedure :: setup => setup_cloud_optics_data
-#ifdef _OPENACC
-     procedure :: create_device
-     procedure :: update_host
-     procedure :: update_device
-     procedure :: delete_device
-#endif
+     
+     
+     
+     
+     
+
+  procedure :: setup_GPU => setup_cloud_optics_data_GPU
+
+  procedure :: create_device_GPU
+
+  procedure :: update_host_GPU
+
+  procedure :: update_device_GPU
+
+  procedure :: delete_device_GPU
+
+  procedure :: setup_CPU => setup_cloud_optics_data_CPU
 
   end type cloud_optics_type
 
@@ -53,14 +63,129 @@ contains
 
   !---------------------------------------------------------------------
   ! Setup cloud optics coefficients by reading them from a file
-  subroutine setup_cloud_optics_data(this, liq_file_name, ice_file_name, iverbose)
+  
 
-    use yomhook,              only : lhook, dr_hook, jphook
-#ifdef EASY_NETCDF_READ_MPI
-    use easy_netcdf_read_mpi, only : netcdf_file
-#else
-    use easy_netcdf,          only : netcdf_file
-#endif
+
+  
+
+  
+
+  
+
+  
+
+  subroutine setup_cloud_optics_data_GPU(this, liq_file_name, ice_file_name, iverbose, lacc)
+
+    use yomhook
+    use easy_netcdf
+
+    class(cloud_optics_type), intent(inout) :: this
+    character(len=*), intent(in)            :: liq_file_name, ice_file_name
+    integer, intent(in), optional           :: iverbose
+
+    ! The NetCDF file containing the coefficients
+    type(netcdf_file)  :: file
+    integer            :: iverb
+    real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
+
+    if (lhook) call dr_hook('radiation_cloud_optics_data:setup',0,hook_handle)
+
+    if (present(iverbose)) then
+      iverb = iverbose
+    else
+      iverb = 2
+    end if
+
+    ! Open the droplet scattering file and configure the way it is
+    ! read
+    call file%open(trim(liq_file_name), iverbose=iverb)
+    call file%transpose_matrices()
+
+    ! Read the band-specific coefficients
+    call file%get('coeff_lw',this%liq_coeff_lw)
+    call file%get('coeff_sw',this%liq_coeff_sw)
+
+    ! Read the general  coefficients
+    if (file%exists('coeff_gen')) then
+      call file%get('coeff_gen',this%liq_coeff_gen)
+    end if
+
+    ! Close droplet scattering file
+    call file%close()
+
+    ! Open the ice scattering file and configure the way it is read
+    call file%open(trim(ice_file_name), iverbose=iverb)
+    call file%transpose_matrices()
+
+    ! Read the band-specific  coefficients
+    call file%get('coeff_lw',this%ice_coeff_lw)
+    call file%get('coeff_sw',this%ice_coeff_sw)
+
+    ! Read the general  coefficients
+    if (file%exists('coeff_gen')) then
+      call file%get('coeff_gen',this%ice_coeff_gen)
+    end if
+
+    ! Close ice scattering file
+    call file%close()
+
+    if (lhook) call dr_hook('radiation_cloud_optics_data:setup',1,hook_handle)
+
+  end subroutine setup_cloud_optics_data_GPU
+
+  subroutine create_device_GPU(this, lacc)
+    class(cloud_optics_type), intent(inout) :: this
+    logical, intent (in) :: lacc
+
+    !$ACC ENTER DATA COPYIN(this%liq_coeff_lw) IF((allocated(this%liq_coeff_lw)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%liq_coeff_sw) IF((allocated(this%liq_coeff_sw)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%ice_coeff_lw) IF((allocated(this%ice_coeff_lw)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%ice_coeff_sw) IF((allocated(this%ice_coeff_sw)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%liq_coeff_gen) IF((allocated(this%liq_coeff_gen)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%ice_coeff_gen) IF((allocated(this%ice_coeff_gen)) .AND. lacc) ASYNC(1)
+  end subroutine create_device_GPU
+
+  subroutine update_host_GPU(this, lacc)
+    class(cloud_optics_type), intent(inout) :: this
+    logical, intent (in) :: lacc
+
+    !$ACC UPDATE HOST(this%liq_coeff_lw) IF((allocated(this%liq_coeff_lw)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%liq_coeff_sw) IF((allocated(this%liq_coeff_sw)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%ice_coeff_lw) IF((allocated(this%ice_coeff_lw)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%ice_coeff_sw) IF((allocated(this%ice_coeff_sw)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%liq_coeff_gen) IF((allocated(this%liq_coeff_gen)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%ice_coeff_gen) IF((allocated(this%ice_coeff_gen)) .AND. lacc) ASYNC(1)
+  end subroutine update_host_GPU
+
+  subroutine update_device_GPU(this, lacc)
+    class(cloud_optics_type), intent(inout) :: this
+    logical, intent (in) :: lacc
+
+    !$ACC UPDATE DEVICE(this%liq_coeff_lw) IF((allocated(this%liq_coeff_lw)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%liq_coeff_sw) IF((allocated(this%liq_coeff_sw)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%ice_coeff_lw) IF((allocated(this%ice_coeff_lw)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%ice_coeff_sw) IF((allocated(this%ice_coeff_sw)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%liq_coeff_gen) IF((allocated(this%liq_coeff_gen)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%ice_coeff_gen) IF((allocated(this%ice_coeff_gen)) .AND. lacc) ASYNC(1)
+  end subroutine update_device_GPU
+
+  subroutine delete_device_GPU(this, lacc)
+    class(cloud_optics_type), intent(inout) :: this
+    logical, intent (in) :: lacc
+
+    !$ACC EXIT DATA DELETE(this%liq_coeff_lw) IF((allocated(this%liq_coeff_lw)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%liq_coeff_sw) IF((allocated(this%liq_coeff_sw)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%ice_coeff_lw) IF((allocated(this%ice_coeff_lw)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%ice_coeff_sw) IF((allocated(this%ice_coeff_sw)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%liq_coeff_gen) IF((allocated(this%liq_coeff_gen)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%ice_coeff_gen) IF((allocated(this%ice_coeff_gen)) .AND. lacc) ASYNC(1)
+  end subroutine delete_device_GPU
+
+  subroutine setup_cloud_optics_data_CPU(this, liq_file_name, ice_file_name, iverbose)
+
+    use yomhook
+    use easy_netcdf
 
     class(cloud_optics_type), intent(inout) :: this
     character(len=*), intent(in)            :: liq_file_name, ice_file_name
@@ -114,53 +239,6 @@ contains
 
     if (lhook) call dr_hook('radiation_cloud_optics_data:setup',1,hook_handle)
 
-  end subroutine setup_cloud_optics_data
-
-#ifdef _OPENACC
-
-  subroutine create_device(this)
-    class(cloud_optics_type), intent(inout) :: this
-
-    !$ACC ENTER DATA COPYIN(this%liq_coeff_lw) IF(allocated(this%liq_coeff_lw)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%liq_coeff_sw) IF(allocated(this%liq_coeff_sw)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%ice_coeff_lw) IF(allocated(this%ice_coeff_lw)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%ice_coeff_sw) IF(allocated(this%ice_coeff_sw)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%liq_coeff_gen) IF(allocated(this%liq_coeff_gen)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%ice_coeff_gen) IF(allocated(this%ice_coeff_gen)) ASYNC(1)
-  end subroutine create_device
-
-  subroutine update_host(this)
-    class(cloud_optics_type), intent(inout) :: this
-
-    !$ACC UPDATE HOST(this%liq_coeff_lw) IF(allocated(this%liq_coeff_lw)) ASYNC(1)
-    !$ACC UPDATE HOST(this%liq_coeff_sw) IF(allocated(this%liq_coeff_sw)) ASYNC(1)
-    !$ACC UPDATE HOST(this%ice_coeff_lw) IF(allocated(this%ice_coeff_lw)) ASYNC(1)
-    !$ACC UPDATE HOST(this%ice_coeff_sw) IF(allocated(this%ice_coeff_sw)) ASYNC(1)
-    !$ACC UPDATE HOST(this%liq_coeff_gen) IF(allocated(this%liq_coeff_gen)) ASYNC(1)
-    !$ACC UPDATE HOST(this%ice_coeff_gen) IF(allocated(this%ice_coeff_gen)) ASYNC(1)
-  end subroutine update_host
-
-  subroutine update_device(this)
-    class(cloud_optics_type), intent(inout) :: this
-
-    !$ACC UPDATE DEVICE(this%liq_coeff_lw) IF(allocated(this%liq_coeff_lw)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%liq_coeff_sw) IF(allocated(this%liq_coeff_sw)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%ice_coeff_lw) IF(allocated(this%ice_coeff_lw)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%ice_coeff_sw) IF(allocated(this%ice_coeff_sw)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%liq_coeff_gen) IF(allocated(this%liq_coeff_gen)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%ice_coeff_gen) IF(allocated(this%ice_coeff_gen)) ASYNC(1)
-  end subroutine update_device
-
-  subroutine delete_device(this)
-    class(cloud_optics_type), intent(inout) :: this
-
-    !$ACC EXIT DATA DELETE(this%liq_coeff_lw) IF(allocated(this%liq_coeff_lw)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%liq_coeff_sw) IF(allocated(this%liq_coeff_sw)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%ice_coeff_lw) IF(allocated(this%ice_coeff_lw)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%ice_coeff_sw) IF(allocated(this%ice_coeff_sw)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%liq_coeff_gen) IF(allocated(this%liq_coeff_gen)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%ice_coeff_gen) IF(allocated(this%ice_coeff_gen)) ASYNC(1)
-  end subroutine delete_device
-#endif
+  end subroutine setup_cloud_optics_data_CPU
 
 end module radiation_cloud_optics_data

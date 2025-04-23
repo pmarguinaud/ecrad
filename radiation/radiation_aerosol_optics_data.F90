@@ -20,13 +20,13 @@
 
 module radiation_aerosol_optics_data
 
-  use parkind1,      only : jprb
-  use radiation_io,  only : nulerr, radiation_abort
+  use parkind1
+  use radiation_io
 
   implicit none
-  public
+  
 
-  private :: get_line
+  
 
   ! The following provide possible values for
   ! aerosol_optics_type%iclass, which is used to map the user's type
@@ -136,23 +136,69 @@ module radiation_aerosol_optics_data
      logical :: use_monochromatic = .false.
 
    contains
-     procedure :: setup => setup_aerosol_optics_data
-     procedure :: save  => save_aerosol_optics
-     procedure :: allocate
-     procedure :: initialize_types
-     procedure :: set_hydrophobic_type
-     procedure :: set_hydrophilic_type
-     procedure :: set_empty_type
-     procedure :: set_types
-     procedure :: calc_rh_index
-     procedure :: print_description
+     
+     
+     
+     
+     
+     
+     
+     
+     
+     
 
-#ifdef _OPENACC
-     procedure :: create_device
-     procedure :: update_host
-     procedure :: update_device
-     procedure :: delete_device
-#endif
+     
+     
+     
+     
+
+  procedure :: setup_GPU => setup_aerosol_optics_data_GPU
+
+  procedure :: save_GPU  => save_aerosol_optics_GPU
+
+  procedure :: allocate_GPU
+
+  procedure :: initialize_types_GPU
+
+  procedure :: set_hydrophobic_type_GPU
+
+  procedure :: set_hydrophilic_type_GPU
+
+  procedure :: set_empty_type_GPU
+
+  procedure :: set_types_GPU
+
+  procedure :: calc_rh_index_GPU
+
+  procedure :: print_description_GPU
+
+  procedure :: create_device_GPU
+
+  procedure :: update_host_GPU
+
+  procedure :: update_device_GPU
+
+  procedure :: delete_device_GPU
+
+  procedure :: setup_CPU => setup_aerosol_optics_data_CPU
+
+  procedure :: save_CPU  => save_aerosol_optics_CPU
+
+  procedure :: allocate_CPU
+
+  procedure :: initialize_types_CPU
+
+  procedure :: set_hydrophobic_type_CPU
+
+  procedure :: set_hydrophilic_type_CPU
+
+  procedure :: set_empty_type_CPU
+
+  procedure :: set_types_CPU
+
+  procedure :: calc_rh_index_CPU
+
+  procedure :: print_description_CPU
 
   end type aerosol_optics_type
 
@@ -161,15 +207,802 @@ contains
 
   !---------------------------------------------------------------------
   ! Setup aerosol optics coefficients by reading them from a file
-  subroutine setup_aerosol_optics_data(this, file_name, iverbose)
+  
 
-    use yomhook,              only : lhook, dr_hook, jphook
-#ifdef EASY_NETCDF_READ_MPI
-    use easy_netcdf_read_mpi, only : netcdf_file
-#else
-    use easy_netcdf,          only : netcdf_file
-#endif
-    use radiation_io,         only : nulerr, radiation_abort
+
+  !---------------------------------------------------------------------
+  ! Initialize the arrays describing the user's aerosol types
+  
+
+  !---------------------------------------------------------------------
+  ! Allocate arrays for aerosol optics data type
+  
+
+
+  !---------------------------------------------------------------------
+  ! Save aerosol optical properties in the named file
+  
+
+
+  !---------------------------------------------------------------------
+  ! Map user type "itype" onto stored hydrophobic type "i_type_phobic"
+  
+
+
+  !---------------------------------------------------------------------
+  ! Map user type "itype" onto stored hydrophilic type "i_type_philic"
+  
+
+
+  !---------------------------------------------------------------------
+  ! Set a user type "itype" to be ignored in the radiation scheme
+  
+
+
+  !---------------------------------------------------------------------
+  ! Set user types "itypes" to map onto the stored hydrophobic and
+  ! hydrophilic types according to its sign and value, with a value of
+  ! 0 indicating that this type is to be ignored.  Thus if itypes=(/
+  ! 3, 4, -6, 0 /) then user types 1 and 2 map on to hydrophobic types
+  ! 3 and 4, user type 3 maps on to hydrophilic type 6 and user type 4
+  ! is ignored.
+  
+
+
+  !---------------------------------------------------------------------
+  ! Return an index to the relative-humdity array, or zero if no
+  ! hydrophilic types are present. This function does so little that
+  ! it is best to remove the Dr Hook call.
+  
+
+
+  !---------------------------------------------------------------------
+  ! Print a description of the aerosol types to nulout
+  
+
+
+  !---------------------------------------------------------------------
+  ! Private helper function for print_description
+  
+
+
+  
+
+  
+
+  
+
+  
+
+
+  subroutine setup_aerosol_optics_data_GPU(this, file_name, iverbose, lacc)
+
+    use yomhook
+    use easy_netcdf
+    use radiation_io
+
+    class(aerosol_optics_type), intent(inout) :: this
+    character(len=*), intent(in)              :: file_name
+    integer, intent(in), optional             :: iverbose
+
+    ! The NetCDF file containing the aerosol optics data
+    type(netcdf_file)  :: file
+
+    real(jprb), allocatable :: wavelength_tmp(:)
+    integer            :: iverb
+
+    real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:setup',0,hook_handle)
+
+    if (present(iverbose)) then
+       iverb = iverbose
+    else
+       iverb = 2
+    end if
+
+    ! Open the aerosol scattering file and configure the way it is
+    ! read
+    call file%open(trim(file_name), iverbose=iverb)
+
+    if (file%exists('mass_ext_sw_hydrophilic')) then
+      this%use_hydrophilic = .true.
+    else
+      this%use_hydrophilic = .false.
+    end if
+
+    ! Read the wavenumber bounds
+    call file%get('wavenumber1_sw', this%wavenumber1_sw)
+    call file%get('wavenumber2_sw', this%wavenumber2_sw)
+    call file%get('wavenumber1_lw', this%wavenumber1_lw)
+    call file%get('wavenumber2_lw', this%wavenumber2_lw)
+
+    ! Read the raw scattering data
+    call file%get('mass_ext_sw_hydrophobic', this%mass_ext_sw_phobic)
+    call file%get('ssa_sw_hydrophobic',      this%ssa_sw_phobic)
+    call file%get('asymmetry_sw_hydrophobic',this%g_sw_phobic)
+    call file%get('mass_ext_lw_hydrophobic', this%mass_ext_lw_phobic)
+    call file%get('ssa_lw_hydrophobic',      this%ssa_lw_phobic)
+    call file%get('asymmetry_lw_hydrophobic',this%g_lw_phobic)
+
+    call file%get_global_attribute('description_hydrophobic', &
+         &                         this%description_phobic_str)
+
+    ! Precompute ssa*g for the shortwave and mass-absorption for the
+    ! longwave - TBD FIX
+    !allocate(this%ssa_g_sw_phobic(...
+
+    if (this%use_hydrophilic) then
+      call file%get('mass_ext_sw_hydrophilic', this%mass_ext_sw_philic)
+      call file%get('ssa_sw_hydrophilic',      this%ssa_sw_philic)
+      call file%get('asymmetry_sw_hydrophilic',this%g_sw_philic)
+      call file%get('mass_ext_lw_hydrophilic', this%mass_ext_lw_philic)
+      call file%get('ssa_lw_hydrophilic',      this%ssa_lw_philic)
+      call file%get('asymmetry_lw_hydrophilic',this%g_lw_philic)
+
+      call file%get('relative_humidity1',      this%rh_lower)
+
+      call file%get_global_attribute('description_hydrophilic', &
+           &                         this%description_philic_str)
+    end if
+
+    ! Read the monochromatic scattering data at selected wavelengths
+    ! if available in the input file
+    if (file%exists('mass_ext_mono_hydrophobic')) then
+      this%use_monochromatic = .true.
+
+      if (allocated(this%wavelength_mono)) then
+        ! User has provided required monochromatic wavelengths, which
+        ! must match those in the file (in the more recent "general"
+        ! aerosol optics, interpolation provides optical properties at
+        ! the requested wavelengths)
+        call file%get('wavelength_mono', wavelength_tmp)
+        if (size(wavelength_tmp) /= size(this%wavelength_mono)) then
+          write(nulerr,'(a,i0,a,i0,a)') '*** Error: ', size(this%wavelength_mono), &
+               &  ' monochromatic wavelengths requested but ', &
+               &  size(wavelength_tmp), ' in file'
+          call radiation_abort('Radiation configuration error')
+        end if
+        if (any(abs(this%wavelength_mono-wavelength_tmp) &
+               &  / this%wavelength_mono > 0.01_jprb)) then
+          write(nulerr,'(a,a)') '*** Error: requested monochromatic wavelengths', &
+               &  'must all be within 1% of values in file'
+          call radiation_abort('Radiation configuration error')
+        end if
+      else
+        ! User has not provided required wavelengths, so we save the
+        ! monochromatic wavelengths in the file
+        call file%get('wavelength_mono', this%wavelength_mono)
+      end if
+
+      call file%get('mass_ext_mono_hydrophobic', this%mass_ext_mono_phobic)
+      call file%get('ssa_mono_hydrophobic',      this%ssa_mono_phobic)
+      call file%get('asymmetry_mono_hydrophobic',this%g_mono_phobic)
+      call file%get('lidar_ratio_mono_hydrophobic',this%lidar_ratio_mono_phobic)
+      if (this%use_hydrophilic) then
+        call file%get('mass_ext_mono_hydrophilic', this%mass_ext_mono_philic)
+        call file%get('ssa_mono_hydrophilic',      this%ssa_mono_philic)
+        call file%get('asymmetry_mono_hydrophilic',this%g_mono_philic)
+        call file%get('lidar_ratio_mono_hydrophilic',this%lidar_ratio_mono_philic)
+      end if
+    else
+      this%use_monochromatic = .false.
+    end if
+
+    ! Close aerosol scattering file
+    call file%close()
+
+    ! Get array sizes
+    this%n_bands_lw    = size(this%mass_ext_lw_phobic, 1)
+    this%n_bands_sw    = size(this%mass_ext_sw_phobic, 1)
+    if (this%use_monochromatic) then
+      this%n_mono_wl   = size(this%mass_ext_mono_phobic, 1)
+    else
+      this%n_mono_wl   = 0
+    end if
+    this%n_type_phobic = size(this%mass_ext_lw_phobic, 2)
+
+    if (this%use_hydrophilic) then
+      this%n_type_philic = size(this%mass_ext_lw_philic, 3)
+      this%nrh           = size(this%mass_ext_lw_philic, 2)
+
+      ! Check agreement of dimensions
+      if (size(this%mass_ext_lw_philic,1) /= this%n_bands_lw) then
+        write(nulerr,'(a,a)') '*** Error: mass extinction for hydrophilic and hydrophobic ', &
+             &                'aerosol have different numbers of longwave bands'
+        call radiation_abort('Radiation configuration error')
+      end if
+      if (size(this%mass_ext_sw_philic,1) /= this%n_bands_sw) then
+        write(nulerr,'(a,a)') '*** Error: mass extinction for hydrophilic and hydrophobic ', &
+             &                'aerosol have different numbers of shortwave bands'
+        call radiation_abort('Radiation configuration error')
+      end if
+      if (size(this%rh_lower) /= this%nrh) then
+        write(nulerr,'(a)') '*** Error: size(relative_humidity1) /= size(mass_ext_sw_hydrophilic,2)'
+        call radiation_abort('Radiation configuration error')
+      end if
+
+    else
+      this%n_type_philic = 0
+      this%nrh           = 0
+    end if
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:setup',1,hook_handle)
+
+  end subroutine setup_aerosol_optics_data_GPU
+
+  subroutine initialize_types_GPU(this, ntype, lacc)
+
+    class(aerosol_optics_type), intent(inout) :: this
+    integer,                    intent(in)    :: ntype
+    logical, intent (in) :: lacc
+
+    ! Allocate memory for mapping arrays
+    this%ntype = ntype
+    allocate(this%iclass(ntype))
+    allocate(this%itype(ntype))
+
+    this%iclass = IAerosolClassUndefined
+    this%itype  = 0
+
+  end subroutine initialize_types_GPU
+
+  subroutine allocate_GPU(this, n_type_phobic, n_type_philic, nrh, &
+       &              n_bands_lw, n_bands_sw, n_mono_wl, lacc)
+
+    use yomhook
+
+    class(aerosol_optics_type), intent(inout) :: this
+    integer, intent(in) :: n_type_phobic, n_type_philic, nrh
+    integer, intent(in) :: n_bands_lw, n_bands_sw, n_mono_wl
+
+    real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:allocate',0,hook_handle)
+
+    this%n_type_phobic = n_type_phobic
+    this%n_type_philic = n_type_philic
+    this%nrh           = nrh
+    this%n_bands_lw    = n_bands_lw
+    this%n_bands_sw    = n_bands_sw
+    this%n_mono_wl     = n_mono_wl
+
+    if (n_type_philic > 0) then
+      this%use_hydrophilic = .true.
+    else
+      this%use_hydrophilic = .false.
+    end if
+
+    if (n_bands_sw > 0) then
+      allocate(this%mass_ext_sw_phobic(n_bands_sw, n_type_phobic))
+      allocate(this%ssa_sw_phobic(n_bands_sw, n_type_phobic))
+      allocate(this%g_sw_phobic(n_bands_sw, n_type_phobic))
+    end if
+    if (n_bands_lw > 0) then
+      allocate(this%mass_ext_lw_phobic(n_bands_lw, n_type_phobic))
+      allocate(this%ssa_lw_phobic(n_bands_lw, n_type_phobic))
+      allocate(this%g_lw_phobic(n_bands_lw, n_type_phobic))
+    end if
+    if (n_mono_wl > 0) then
+      allocate(this%mass_ext_mono_phobic(n_mono_wl, n_type_phobic))
+      allocate(this%ssa_mono_phobic(n_mono_wl, n_type_phobic))
+      allocate(this%g_mono_phobic(n_mono_wl, n_type_phobic))
+      allocate(this%lidar_ratio_mono_phobic(n_mono_wl, n_type_phobic))
+    end if
+
+    if (n_type_philic > 0 .and. nrh > 0) then
+      if (n_bands_sw > 0) then
+        allocate(this%mass_ext_sw_philic(n_bands_sw, nrh, n_type_philic))
+        allocate(this%ssa_sw_philic(n_bands_sw, nrh, n_type_philic))
+        allocate(this%g_sw_philic(n_bands_sw, nrh, n_type_philic))
+      end if
+      if (n_bands_lw > 0) then
+        allocate(this%mass_ext_lw_philic(n_bands_lw, nrh, n_type_philic))
+        allocate(this%ssa_lw_philic(n_bands_lw, nrh, n_type_philic))
+        allocate(this%g_lw_philic(n_bands_lw, nrh, n_type_philic))
+      end if
+      if (n_mono_wl > 0) then
+        allocate(this%mass_ext_mono_philic(n_mono_wl, nrh, n_type_philic))
+        allocate(this%ssa_mono_philic(n_mono_wl, nrh, n_type_philic))
+        allocate(this%g_mono_philic(n_mono_wl, nrh, n_type_philic))
+        allocate(this%lidar_ratio_mono_philic(n_mono_wl, nrh, n_type_philic))
+      end if
+    end if
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:allocate',1,hook_handle)
+
+  end subroutine allocate_GPU
+
+  subroutine save_aerosol_optics_GPU(this, file_name, iverbose, lacc)
+
+    use yomhook
+    use easy_netcdf
+
+    class(aerosol_optics_type), intent(inout) :: this
+    character(len=*),           intent(in)    :: file_name
+    integer,          optional, intent(in)    :: iverbose
+
+    ! Object for output NetCDF file
+    type(netcdf_file) :: out_file
+
+    real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:save',0,hook_handle)
+
+    ! Create the file
+    call out_file%create(trim(file_name), iverbose=iverbose)
+
+    ! Define dimensions
+    call out_file%define_dimension("band_lw", this%n_bands_lw)
+    call out_file%define_dimension("band_sw", this%n_bands_sw)
+    call out_file%define_dimension("hydrophilic", this%n_type_philic)
+    call out_file%define_dimension("hydrophobic", this%n_type_phobic)
+    call out_file%define_dimension("relative_humidity", this%nrh)
+    !if (this%use_monochromatic) then
+    !  call out_file%define_dimension("wavelength_mono", this%n_mono_wl)
+    !end if
+
+    ! Put global attributes
+    call out_file%put_global_attributes( &
+         &   title_str="Aerosol optical properties in the spectral intervals of the gas-optics scheme for ecRad", &
+         &   source_str="ecRad offline radiation model")
+    call out_file%put_global_attribute( &
+         &  "description_hydrophobic", this%description_phobic_str)
+    call out_file%put_global_attribute( &
+         &  "description_hydrophilic", this%description_philic_str)
+
+    ! Define variables
+    call out_file%define_variable("mass_ext_sw_hydrophobic", units_str="m2 kg-1", &
+         &  long_name="Shortwave mass-extinction coefficient of hydrophobic aerosols", &
+         &  dim2_name="hydrophobic", dim1_name="band_sw")
+    call out_file%define_variable("ssa_sw_hydrophobic", units_str="1", &
+         &  long_name="Shortwave single scattering albedo of hydrophobic aerosols", &
+         &  dim2_name="hydrophobic", dim1_name="band_sw")
+    call out_file%define_variable("asymmetry_sw_hydrophobic", units_str="1", &
+         &  long_name="Shortwave asymmetry factor of hydrophobic aerosols", &
+         &  dim2_name="hydrophobic", dim1_name="band_sw")
+
+    call out_file%define_variable("mass_ext_lw_hydrophobic", units_str="m2 kg-1", &
+         &  long_name="Longwave mass-extinction coefficient of hydrophobic aerosols", &
+         &  dim2_name="hydrophobic", dim1_name="band_lw")
+    call out_file%define_variable("ssa_lw_hydrophobic", units_str="1", &
+         &  long_name="Longwave single scattering albedo of hydrophobic aerosols", &
+         &  dim2_name="hydrophobic", dim1_name="band_lw")
+    call out_file%define_variable("asymmetry_lw_hydrophobic", units_str="1", &
+         &  long_name="Longwave asymmetry factor of hydrophobic aerosols", &
+         &  dim2_name="hydrophobic", dim1_name="band_lw")
+
+    call out_file%define_variable("mass_ext_sw_hydrophilic", units_str="m2 kg-1", &
+         &  long_name="Shortwave mass-extinction coefficient of hydrophilic aerosols", &
+         &  dim3_name="hydrophilic", dim2_name="relative_humidity", dim1_name="band_sw")
+    call out_file%define_variable("ssa_sw_hydrophilic", units_str="1", &
+         &  long_name="Shortwave single scattering albedo of hydrophilic aerosols", &
+         &  dim3_name="hydrophilic", dim2_name="relative_humidity", dim1_name="band_sw")
+    call out_file%define_variable("asymmetry_sw_hydrophilic", units_str="1", &
+         &  long_name="Shortwave asymmetry factor of hydrophilic aerosols", &
+         &  dim3_name="hydrophilic", dim2_name="relative_humidity", dim1_name="band_sw")
+
+    call out_file%define_variable("mass_ext_lw_hydrophilic", units_str="m2 kg-1", &
+         &  long_name="Longwave mass-extinction coefficient of hydrophilic aerosols", &
+         &  dim3_name="hydrophilic", dim2_name="relative_humidity", dim1_name="band_lw")
+    call out_file%define_variable("ssa_lw_hydrophilic", units_str="1", &
+         &  long_name="Longwave single scattering albedo of hydrophilic aerosols", &
+         &  dim3_name="hydrophilic", dim2_name="relative_humidity", dim1_name="band_lw")
+    call out_file%define_variable("asymmetry_lw_hydrophilic", units_str="1", &
+         &  long_name="Longwave asymmetry factor of hydrophilic aerosols", &
+         &  dim3_name="hydrophilic", dim2_name="relative_humidity", dim1_name="band_lw")
+
+    ! Write variables
+    call out_file%put("mass_ext_sw_hydrophobic", this%mass_ext_sw_phobic)
+    call out_file%put("ssa_sw_hydrophobic", this%ssa_sw_phobic)
+    call out_file%put("asymmetry_sw_hydrophobic", this%g_sw_phobic)
+    call out_file%put("mass_ext_lw_hydrophobic", this%mass_ext_lw_phobic)
+    call out_file%put("ssa_lw_hydrophobic", this%ssa_lw_phobic)
+    call out_file%put("asymmetry_lw_hydrophobic", this%g_lw_phobic)
+    call out_file%put("mass_ext_sw_hydrophilic", this%mass_ext_sw_philic)
+    call out_file%put("ssa_sw_hydrophilic", this%ssa_sw_philic)
+    call out_file%put("asymmetry_sw_hydrophilic", this%g_sw_philic)
+    call out_file%put("mass_ext_lw_hydrophilic", this%mass_ext_lw_philic)
+    call out_file%put("ssa_lw_hydrophilic", this%ssa_lw_philic)
+    call out_file%put("asymmetry_lw_hydrophilic", this%g_lw_philic)
+
+    call out_file%close()
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:save',1,hook_handle)
+
+  end subroutine save_aerosol_optics_GPU
+
+  subroutine set_hydrophobic_type_GPU(this, itype, i_type_phobic, lacc)
+
+    use yomhook
+
+    class(aerosol_optics_type), intent(inout) :: this
+    integer, intent(in)                       :: itype, i_type_phobic
+    real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:set_hydrophobic_type',0,hook_handle)
+
+    if (itype < 1 .or. itype > this%ntype) then
+      write(nulerr,'(a,i0)') '*** Error: aerosol type must be in the range 1 to ', &
+           &                  this%ntype
+       call radiation_abort('Error setting up aerosols')
+    end if
+    if (i_type_phobic < 1 .or. i_type_phobic > this%n_type_phobic) then
+      write(nulerr,'(a,i0)') '*** Error: hydrophobic type must be in the range 1 to ', &
+           &                  this%n_type_phobic
+      call radiation_abort('Error setting up aerosols')
+    end if
+
+    this%iclass(itype) = IAerosolClassHydrophobic
+    this%itype (itype) = i_type_phobic
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:set_hydrophobic_type',1,hook_handle)
+
+  end subroutine set_hydrophobic_type_GPU
+
+  subroutine set_hydrophilic_type_GPU(this, itype, i_type_philic, lacc)
+
+    use yomhook
+
+    class(aerosol_optics_type), intent(inout) :: this
+    integer, intent(in)                       :: itype, i_type_philic
+    real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:set_hydrophilic_type',0,hook_handle)
+
+    if (.not. this%use_hydrophilic) then
+      write(nulerr,'(a)') '*** Error: attempt to set hydrophilic aerosol type when no such types present'
+      call radiation_abort('Error setting up aerosols')
+    end if
+
+    if (itype < 1 .or. itype > this%ntype) then
+      write(nulerr,'(a,i0)') '*** Error: aerosol type must be in the range 1 to ', &
+            &          this%ntype
+      call radiation_abort('Error setting up aerosols')
+    end if
+    if (i_type_philic < 1 .or. i_type_philic > this%n_type_philic) then
+      write(nulerr,'(a,i0)') '*** Error: hydrophilic type must be in the range 1 to ', &
+           &                 this%n_type_philic
+      call radiation_abort('Error setting up aerosols')
+    end if
+
+    this%iclass(itype) = IAerosolClassHydrophilic
+    this%itype (itype) = i_type_philic
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:set_hydrophilic_type',1,hook_handle)
+
+  end subroutine set_hydrophilic_type_GPU
+
+  subroutine set_empty_type_GPU(this, itype, lacc)
+
+    use yomhook
+
+    class(aerosol_optics_type), intent(inout) :: this
+    integer, intent(in)                       :: itype
+    real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:set_empty_type',0,hook_handle)
+
+    if (itype < 1 .or. itype > this%ntype) then
+      write(nulerr,'(a,i0)') '*** Error: aerosol type must be in the range 1 to ', &
+           &                 this%ntype
+      call radiation_abort('Error setting up aerosols')
+    end if
+
+    this%iclass(itype) = IAerosolClassIgnored
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:set_empty_type',1,hook_handle)
+
+  end subroutine set_empty_type_GPU
+
+  subroutine set_types_GPU(this, itypes, lacc)
+
+    use yomhook
+
+    class(aerosol_optics_type), intent(inout) :: this
+    integer, dimension(:), intent(in)         :: itypes
+
+    integer :: jtype
+    integer :: istart, iend
+    real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:set_types',0,hook_handle)
+
+    istart = lbound(itypes,1)
+    iend   = ubound(itypes,1)
+
+    do jtype = istart, iend
+      if (itypes(jtype) == 0) then
+        call this%set_empty_type_GPU(jtype, lacc=lacc)
+      else if (itypes(jtype) > 0) then
+        call this%set_hydrophobic_type_GPU(jtype, itypes(jtype), lacc=lacc)
+      else
+        call this%set_hydrophilic_type_GPU(jtype, -itypes(jtype), lacc=lacc)
+      end if
+    end do
+
+    if (lhook) call dr_hook('radiation_aerosol_optics_data:set_types',1,hook_handle)
+
+  end subroutine set_types_GPU
+
+  function calc_rh_index_GPU(this, rh)
+
+    !$ACC ROUTINE SEQ
+
+    !use yomhook,     only : lhook, dr_hook, jphook
+
+    class(aerosol_optics_type), intent(in)    :: this
+    real(jprb),                 intent(in)    :: rh
+    integer                                   :: calc_rh_index_GPU
+    !real(jphook) :: hook_handle
+
+    !if (lhook) call dr_hook('radiation_aerosol_optics_data:calc_rh_index',0,hook_handle)
+
+    if (.not. this%use_hydrophilic) then
+      calc_rh_index_GPU = 0
+    else if (rh > this%rh_lower(this%nrh)) then
+      calc_rh_index_GPU = this%nrh
+    else
+      calc_rh_index_GPU = 1
+      do while (rh > this%rh_lower(calc_rh_index_GPU + 1))
+        calc_rh_index_GPU = calc_rh_index_GPU + 1
+      end do
+    end if
+
+    !if (lhook) call dr_hook('radiation_aerosol_optics_data:calc_rh_index',1,hook_handle)
+
+  end function calc_rh_index_GPU
+
+  subroutine print_description_GPU(this, i_type_map, lacc)
+
+    use radiation_io
+
+    class(aerosol_optics_type), intent(in) :: this
+    integer,                    intent(in) :: i_type_map(:)
+
+    integer :: jtype
+    logical, intent (in) :: lacc
+
+    if (size(i_type_map) > 0) then
+      write(nulout,'(a)') 'Aerosol mapping:'
+    else
+      write(nulout,'(a)') 'No aerosol types in radiation scheme'
+    end if
+
+    do jtype = 1,size(i_type_map)
+      if (i_type_map(jtype) > 0) then
+        write(nulout,'(i4,a,a)') jtype, ' -> hydrophobic type ', &
+             &  trim(get_line_GPU(this%description_phobic_str, i_type_map(jtype), lacc))
+      else if (i_type_map(jtype) < 0) then
+        write(nulout,'(i4,a,a)') jtype, ' -> hydrophilic type ', &
+             &  trim(get_line_GPU(this%description_philic_str, -i_type_map(jtype), lacc))
+      else
+        write(nulout,'(i4,a)') jtype, ' is unused'
+      end if
+    end do
+
+  end subroutine print_description_GPU
+
+  pure function get_line_GPU(str,iline, lacc) result(line_str)
+    character(len=*), intent(in)  :: str
+    integer,          intent(in)  :: iline
+    character(len=NMaxLineLength) :: line_str
+
+    integer :: istart, iend, i_start_new, ioffset, ilength, i_line_current
+    logical :: is_fail
+    logical, intent (in) :: lacc
+
+    i_line_current = 1
+    istart = 1
+    iend = len(str)
+    is_fail = .false.
+    line_str = ' '
+
+    ! Find index of first character
+    do while (i_line_current < iline)
+      i_start_new = scan(str(istart:iend), new_line(' '))
+      if (i_start_new == 0) then
+        is_fail = .true.
+        cycle
+      else
+        istart = istart + i_start_new
+      end if
+      i_line_current = i_line_current + 1
+    end do
+
+    if (.not. is_fail) then
+      ! Find index of last character
+      ioffset = scan(str(istart:iend), new_line(' '))
+      if (ioffset == 0) then
+        ilength = len(trim(str(istart:iend)))
+      else
+        ilength = ioffset - 1
+      end if
+
+      if (ilength > NMaxLineLength) then
+        ilength = NMaxLineLength
+      end if
+      iend = istart + ilength - 1
+
+      line_str = str(istart:iend)
+    else
+      write(line_str,'(i0,a)') iline, ': <unknown>'
+    end if
+
+  end function get_line_GPU
+
+  subroutine create_device_GPU(this, lacc)
+    class(aerosol_optics_type), intent(inout) :: this
+    logical, intent (in) :: lacc
+
+    !$ACC ENTER DATA COPYIN(this%iclass) IF((allocated(this%iclass)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%itype) IF((allocated(this%itype)) .AND. lacc) ASYNC(1)
+
+    !$ACC ENTER DATA COPYIN(this%wavenumber1_sw) IF((allocated(this%wavenumber1_sw)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%wavenumber2_sw) IF((allocated(this%wavenumber2_sw)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%wavenumber1_lw) IF((allocated(this%wavenumber1_lw)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%wavenumber2_lw) IF((allocated(this%wavenumber2_lw)) .AND. lacc) ASYNC(1)
+
+    !$ACC ENTER DATA COPYIN(this%mass_ext_sw_phobic) IF((allocated(this%mass_ext_sw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%ssa_sw_phobic) IF((allocated(this%ssa_sw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%g_sw_phobic) IF((allocated(this%g_sw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%mass_ext_lw_phobic) IF((allocated(this%mass_ext_lw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%ssa_lw_phobic) IF((allocated(this%ssa_lw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%g_lw_phobic) IF((allocated(this%g_lw_phobic)) .AND. lacc) ASYNC(1)
+
+    !$ACC ENTER DATA COPYIN(this%mass_ext_sw_philic) IF((allocated(this%mass_ext_sw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%ssa_sw_philic) IF((allocated(this%ssa_sw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%g_sw_philic) IF((allocated(this%g_sw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%mass_ext_lw_philic) IF((allocated(this%mass_ext_lw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%ssa_lw_philic) IF((allocated(this%ssa_lw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%g_lw_philic) IF((allocated(this%g_lw_philic)) .AND. lacc) ASYNC(1)
+
+    !$ACC ENTER DATA COPYIN(this%wavelength_mono) IF((allocated(this%wavelength_mono)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%mass_ext_mono_phobic) IF((allocated(this%mass_ext_mono_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%ssa_mono_phobic) IF((allocated(this%ssa_mono_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%g_mono_phobic) IF((allocated(this%g_mono_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%lidar_ratio_mono_phobic) IF((allocated(this%lidar_ratio_mono_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%mass_ext_mono_philic) IF((allocated(this%mass_ext_mono_philic)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%ssa_mono_philic) IF((allocated(this%ssa_mono_philic)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%g_mono_philic) IF((allocated(this%g_mono_philic)) .AND. lacc) ASYNC(1)
+    !$ACC ENTER DATA COPYIN(this%lidar_ratio_mono_philic) IF((allocated(this%lidar_ratio_mono_philic)) .AND. lacc) ASYNC(1)
+
+    !$ACC ENTER DATA COPYIN(this%rh_lower) IF((allocated(this%rh_lower)) .AND. lacc) ASYNC(1)
+
+  end subroutine create_device_GPU
+
+  subroutine update_host_GPU(this, lacc)
+    class(aerosol_optics_type), intent(inout) :: this
+    logical, intent (in) :: lacc
+
+    !$ACC UPDATE HOST(this%iclass) IF((allocated(this%iclass)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%itype) IF((allocated(this%itype)) .AND. lacc) ASYNC(1)
+
+    !$ACC UPDATE HOST(this%wavenumber1_sw) IF((allocated(this%wavenumber1_sw)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%wavenumber2_sw) IF((allocated(this%wavenumber2_sw)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%wavenumber1_lw) IF((allocated(this%wavenumber1_lw)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%wavenumber2_lw) IF((allocated(this%wavenumber2_lw)) .AND. lacc) ASYNC(1)
+
+    !$ACC UPDATE HOST(this%mass_ext_sw_phobic) IF((allocated(this%mass_ext_sw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%ssa_sw_phobic) IF((allocated(this%ssa_sw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%g_sw_phobic) IF((allocated(this%g_sw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%mass_ext_lw_phobic) IF((allocated(this%mass_ext_lw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%ssa_lw_phobic) IF((allocated(this%ssa_lw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%g_lw_phobic) IF((allocated(this%g_lw_phobic)) .AND. lacc) ASYNC(1)
+
+    !$ACC UPDATE HOST(this%mass_ext_sw_philic) IF((allocated(this%mass_ext_sw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%ssa_sw_philic) IF((allocated(this%ssa_sw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%g_sw_philic) IF((allocated(this%g_sw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%mass_ext_lw_philic) IF((allocated(this%mass_ext_lw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%ssa_lw_philic) IF((allocated(this%ssa_lw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%g_lw_philic) IF((allocated(this%g_lw_philic)) .AND. lacc) ASYNC(1)
+
+    !$ACC UPDATE HOST(this%wavelength_mono) IF((allocated(this%wavelength_mono)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%mass_ext_mono_phobic) IF((allocated(this%mass_ext_mono_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%ssa_mono_phobic) IF((allocated(this%ssa_mono_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%g_mono_phobic) IF((allocated(this%g_mono_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%lidar_ratio_mono_phobic) IF((allocated(this%lidar_ratio_mono_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%mass_ext_mono_philic) IF((allocated(this%mass_ext_mono_philic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%ssa_mono_philic) IF((allocated(this%ssa_mono_philic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%g_mono_philic) IF((allocated(this%g_mono_philic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE HOST(this%lidar_ratio_mono_philic) IF((allocated(this%lidar_ratio_mono_philic)) .AND. lacc) ASYNC(1)
+
+    !$ACC UPDATE HOST(this%rh_lower) IF((allocated(this%rh_lower)) .AND. lacc) ASYNC(1)
+
+  end subroutine update_host_GPU
+
+  subroutine update_device_GPU(this, lacc)
+    class(aerosol_optics_type), intent(inout) :: this
+    logical, intent (in) :: lacc
+
+    !$ACC UPDATE DEVICE(this%iclass) IF((allocated(this%iclass)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%itype) IF((allocated(this%itype)) .AND. lacc) ASYNC(1)
+
+    !$ACC UPDATE DEVICE(this%wavenumber1_sw) IF((allocated(this%wavenumber1_sw)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%wavenumber2_sw) IF((allocated(this%wavenumber2_sw)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%wavenumber1_lw) IF((allocated(this%wavenumber1_lw)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%wavenumber2_lw) IF((allocated(this%wavenumber2_lw)) .AND. lacc) ASYNC(1)
+
+    !$ACC UPDATE DEVICE(this%mass_ext_sw_phobic) IF((allocated(this%mass_ext_sw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%ssa_sw_phobic) IF((allocated(this%ssa_sw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%g_sw_phobic) IF((allocated(this%g_sw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%mass_ext_lw_phobic) IF((allocated(this%mass_ext_lw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%ssa_lw_phobic) IF((allocated(this%ssa_lw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%g_lw_phobic) IF((allocated(this%g_lw_phobic)) .AND. lacc) ASYNC(1)
+
+    !$ACC UPDATE DEVICE(this%mass_ext_sw_philic) IF((allocated(this%mass_ext_sw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%ssa_sw_philic) IF((allocated(this%ssa_sw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%g_sw_philic) IF((allocated(this%g_sw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%mass_ext_lw_philic) IF((allocated(this%mass_ext_lw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%ssa_lw_philic) IF((allocated(this%ssa_lw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%g_lw_philic) IF((allocated(this%g_lw_philic)) .AND. lacc) ASYNC(1)
+
+    !$ACC UPDATE DEVICE(this%wavelength_mono) IF((allocated(this%wavelength_mono)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%mass_ext_mono_phobic) IF((allocated(this%mass_ext_mono_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%ssa_mono_phobic) IF((allocated(this%ssa_mono_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%g_mono_phobic) IF((allocated(this%g_mono_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%lidar_ratio_mono_phobic) IF((allocated(this%lidar_ratio_mono_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%mass_ext_mono_philic) IF((allocated(this%mass_ext_mono_philic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%ssa_mono_philic) IF((allocated(this%ssa_mono_philic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%g_mono_philic) IF((allocated(this%g_mono_philic)) .AND. lacc) ASYNC(1)
+    !$ACC UPDATE DEVICE(this%lidar_ratio_mono_philic) IF((allocated(this%lidar_ratio_mono_philic)) .AND. lacc) ASYNC(1)
+
+    !$ACC UPDATE DEVICE(this%rh_lower) IF((allocated(this%rh_lower)) .AND. lacc) ASYNC(1)
+
+  end subroutine update_device_GPU
+
+  subroutine delete_device_GPU(this, lacc)
+    class(aerosol_optics_type), intent(inout) :: this
+    logical, intent (in) :: lacc
+
+    !$ACC EXIT DATA DELETE(this%iclass) IF((allocated(this%iclass)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%itype) IF((allocated(this%itype)) .AND. lacc) ASYNC(1)
+
+    !$ACC EXIT DATA DELETE(this%wavenumber1_sw) IF((allocated(this%wavenumber1_sw)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%wavenumber2_sw) IF((allocated(this%wavenumber2_sw)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%wavenumber1_lw) IF((allocated(this%wavenumber1_lw)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%wavenumber2_lw) IF((allocated(this%wavenumber2_lw)) .AND. lacc) ASYNC(1)
+
+    !$ACC EXIT DATA DELETE(this%mass_ext_sw_phobic) IF((allocated(this%mass_ext_sw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%ssa_sw_phobic) IF((allocated(this%ssa_sw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%g_sw_phobic) IF((allocated(this%g_sw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%mass_ext_lw_phobic) IF((allocated(this%mass_ext_lw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%ssa_lw_phobic) IF((allocated(this%ssa_lw_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%g_lw_phobic) IF((allocated(this%g_lw_phobic)) .AND. lacc) ASYNC(1)
+
+    !$ACC EXIT DATA DELETE(this%mass_ext_sw_philic) IF((allocated(this%mass_ext_sw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%ssa_sw_philic) IF((allocated(this%ssa_sw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%g_sw_philic) IF((allocated(this%g_sw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%mass_ext_lw_philic) IF((allocated(this%mass_ext_lw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%ssa_lw_philic) IF((allocated(this%ssa_lw_philic)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%g_lw_philic) IF((allocated(this%g_lw_philic)) .AND. lacc) ASYNC(1)
+
+    !$ACC EXIT DATA DELETE(this%wavelength_mono) IF((allocated(this%wavelength_mono)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%mass_ext_mono_phobic) IF((allocated(this%mass_ext_mono_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%ssa_mono_phobic) IF((allocated(this%ssa_mono_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%g_mono_phobic) IF((allocated(this%g_mono_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%lidar_ratio_mono_phobic) IF((allocated(this%lidar_ratio_mono_phobic)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%mass_ext_mono_philic) IF((allocated(this%mass_ext_mono_philic)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%ssa_mono_philic) IF((allocated(this%ssa_mono_philic)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%g_mono_philic) IF((allocated(this%g_mono_philic)) .AND. lacc) ASYNC(1)
+    !$ACC EXIT DATA DELETE(this%lidar_ratio_mono_philic) IF((allocated(this%lidar_ratio_mono_philic)) .AND. lacc) ASYNC(1)
+
+    !$ACC EXIT DATA DELETE(this%rh_lower) IF((allocated(this%rh_lower)) .AND. lacc) ASYNC(1)
+
+  end subroutine delete_device_GPU
+
+  subroutine setup_aerosol_optics_data_CPU(this, file_name, iverbose)
+
+    use yomhook
+    use easy_netcdf
+    use radiation_io
 
     class(aerosol_optics_type), intent(inout) :: this
     character(len=*), intent(in)              :: file_name
@@ -319,12 +1152,9 @@ contains
 
     if (lhook) call dr_hook('radiation_aerosol_optics_data:setup',1,hook_handle)
 
-  end subroutine setup_aerosol_optics_data
+  end subroutine setup_aerosol_optics_data_CPU
 
-
-  !---------------------------------------------------------------------
-  ! Initialize the arrays describing the user's aerosol types
-  subroutine initialize_types(this, ntype)
+  subroutine initialize_types_CPU(this, ntype)
 
     class(aerosol_optics_type), intent(inout) :: this
     integer,                    intent(in)    :: ntype
@@ -337,14 +1167,12 @@ contains
     this%iclass = IAerosolClassUndefined
     this%itype  = 0
 
-  end subroutine initialize_types
+  end subroutine initialize_types_CPU
 
-  !---------------------------------------------------------------------
-  ! Allocate arrays for aerosol optics data type
-  subroutine allocate(this, n_type_phobic, n_type_philic, nrh, &
+  subroutine allocate_CPU(this, n_type_phobic, n_type_philic, nrh, &
        &              n_bands_lw, n_bands_sw, n_mono_wl)
 
-    use yomhook,     only : lhook, dr_hook, jphook
+    use yomhook
 
     class(aerosol_optics_type), intent(inout) :: this
     integer, intent(in) :: n_type_phobic, n_type_philic, nrh
@@ -405,15 +1233,12 @@ contains
 
     if (lhook) call dr_hook('radiation_aerosol_optics_data:allocate',1,hook_handle)
 
-  end subroutine allocate
+  end subroutine allocate_CPU
 
+  subroutine save_aerosol_optics_CPU(this, file_name, iverbose)
 
-  !---------------------------------------------------------------------
-  ! Save aerosol optical properties in the named file
-  subroutine save_aerosol_optics(this, file_name, iverbose)
-
-    use yomhook,              only : lhook, dr_hook, jphook
-    use easy_netcdf,          only : netcdf_file
+    use yomhook
+    use easy_netcdf
 
     class(aerosol_optics_type), intent(inout) :: this
     character(len=*),           intent(in)    :: file_name
@@ -507,14 +1332,11 @@ contains
 
     if (lhook) call dr_hook('radiation_aerosol_optics_data:save',1,hook_handle)
 
-  end subroutine save_aerosol_optics
+  end subroutine save_aerosol_optics_CPU
 
+  subroutine set_hydrophobic_type_CPU(this, itype, i_type_phobic)
 
-  !---------------------------------------------------------------------
-  ! Map user type "itype" onto stored hydrophobic type "i_type_phobic"
-  subroutine set_hydrophobic_type(this, itype, i_type_phobic)
-
-    use yomhook,     only : lhook, dr_hook, jphook
+    use yomhook
 
     class(aerosol_optics_type), intent(inout) :: this
     integer, intent(in)                       :: itype, i_type_phobic
@@ -538,14 +1360,11 @@ contains
 
     if (lhook) call dr_hook('radiation_aerosol_optics_data:set_hydrophobic_type',1,hook_handle)
 
-  end subroutine set_hydrophobic_type
+  end subroutine set_hydrophobic_type_CPU
 
+  subroutine set_hydrophilic_type_CPU(this, itype, i_type_philic)
 
-  !---------------------------------------------------------------------
-  ! Map user type "itype" onto stored hydrophilic type "i_type_philic"
-  subroutine set_hydrophilic_type(this, itype, i_type_philic)
-
-    use yomhook,     only : lhook, dr_hook, jphook
+    use yomhook
 
     class(aerosol_optics_type), intent(inout) :: this
     integer, intent(in)                       :: itype, i_type_philic
@@ -574,14 +1393,11 @@ contains
 
     if (lhook) call dr_hook('radiation_aerosol_optics_data:set_hydrophilic_type',1,hook_handle)
 
-  end subroutine set_hydrophilic_type
+  end subroutine set_hydrophilic_type_CPU
 
+  subroutine set_empty_type_CPU(this, itype)
 
-  !---------------------------------------------------------------------
-  ! Set a user type "itype" to be ignored in the radiation scheme
-  subroutine set_empty_type(this, itype)
-
-    use yomhook,     only : lhook, dr_hook, jphook
+    use yomhook
 
     class(aerosol_optics_type), intent(inout) :: this
     integer, intent(in)                       :: itype
@@ -599,19 +1415,11 @@ contains
 
     if (lhook) call dr_hook('radiation_aerosol_optics_data:set_empty_type',1,hook_handle)
 
-  end subroutine set_empty_type
+  end subroutine set_empty_type_CPU
 
+  subroutine set_types_CPU(this, itypes)
 
-  !---------------------------------------------------------------------
-  ! Set user types "itypes" to map onto the stored hydrophobic and
-  ! hydrophilic types according to its sign and value, with a value of
-  ! 0 indicating that this type is to be ignored.  Thus if itypes=(/
-  ! 3, 4, -6, 0 /) then user types 1 and 2 map on to hydrophobic types
-  ! 3 and 4, user type 3 maps on to hydrophilic type 6 and user type 4
-  ! is ignored.
-  subroutine set_types(this, itypes)
-
-    use yomhook,     only : lhook, dr_hook, jphook
+    use yomhook
 
     class(aerosol_optics_type), intent(inout) :: this
     integer, dimension(:), intent(in)         :: itypes
@@ -627,57 +1435,49 @@ contains
 
     do jtype = istart, iend
       if (itypes(jtype) == 0) then
-        call this%set_empty_type(jtype)
+        call this%set_empty_type_CPU(jtype)
       else if (itypes(jtype) > 0) then
-        call this%set_hydrophobic_type(jtype, itypes(jtype))
+        call this%set_hydrophobic_type_CPU(jtype, itypes(jtype))
       else
-        call this%set_hydrophilic_type(jtype, -itypes(jtype))
+        call this%set_hydrophilic_type_CPU(jtype, -itypes(jtype))
       end if
     end do
 
     if (lhook) call dr_hook('radiation_aerosol_optics_data:set_types',1,hook_handle)
 
-  end subroutine set_types
+  end subroutine set_types_CPU
 
+  function calc_rh_index_CPU(this, rh)
 
-  !---------------------------------------------------------------------
-  ! Return an index to the relative-humdity array, or zero if no
-  ! hydrophilic types are present. This function does so little that
-  ! it is best to remove the Dr Hook call.
-  function calc_rh_index(this, rh)
-
-    !$ACC ROUTINE SEQ
+    
 
     !use yomhook,     only : lhook, dr_hook, jphook
 
     class(aerosol_optics_type), intent(in)    :: this
     real(jprb),                 intent(in)    :: rh
-    integer                                   :: calc_rh_index
+    integer                                   :: calc_rh_index_CPU
     !real(jphook) :: hook_handle
 
     !if (lhook) call dr_hook('radiation_aerosol_optics_data:calc_rh_index',0,hook_handle)
 
     if (.not. this%use_hydrophilic) then
-      calc_rh_index = 0
+      calc_rh_index_CPU = 0
     else if (rh > this%rh_lower(this%nrh)) then
-      calc_rh_index = this%nrh
+      calc_rh_index_CPU = this%nrh
     else
-      calc_rh_index = 1
-      do while (rh > this%rh_lower(calc_rh_index + 1))
-        calc_rh_index = calc_rh_index + 1
+      calc_rh_index_CPU = 1
+      do while (rh > this%rh_lower(calc_rh_index_CPU + 1))
+        calc_rh_index_CPU = calc_rh_index_CPU + 1
       end do
     end if
 
     !if (lhook) call dr_hook('radiation_aerosol_optics_data:calc_rh_index',1,hook_handle)
 
-  end function calc_rh_index
+  end function calc_rh_index_CPU
 
+  subroutine print_description_CPU(this, i_type_map)
 
-  !---------------------------------------------------------------------
-  ! Print a description of the aerosol types to nulout
-  subroutine print_description(this, i_type_map)
-
-    use radiation_io, only : nulout
+    use radiation_io
 
     class(aerosol_optics_type), intent(in) :: this
     integer,                    intent(in) :: i_type_map(:)
@@ -693,21 +1493,18 @@ contains
     do jtype = 1,size(i_type_map)
       if (i_type_map(jtype) > 0) then
         write(nulout,'(i4,a,a)') jtype, ' -> hydrophobic type ', &
-             &  trim(get_line(this%description_phobic_str, i_type_map(jtype)))
+             &  trim(get_line_CPU(this%description_phobic_str, i_type_map(jtype)))
       else if (i_type_map(jtype) < 0) then
         write(nulout,'(i4,a,a)') jtype, ' -> hydrophilic type ', &
-             &  trim(get_line(this%description_philic_str, -i_type_map(jtype)))
+             &  trim(get_line_CPU(this%description_philic_str, -i_type_map(jtype)))
       else
         write(nulout,'(i4,a)') jtype, ' is unused'
       end if
     end do
 
-  end subroutine print_description
+  end subroutine print_description_CPU
 
-
-  !---------------------------------------------------------------------
-  ! Private helper function for print_description
-  pure function get_line(str,iline) result(line_str)
+  pure function get_line_CPU(str,iline) result(line_str)
     character(len=*), intent(in)  :: str
     integer,          intent(in)  :: iline
     character(len=NMaxLineLength) :: line_str
@@ -752,166 +1549,6 @@ contains
       write(line_str,'(i0,a)') iline, ': <unknown>'
     end if
 
-  end function get_line
-
-#ifdef _OPENACC
-
-  subroutine create_device(this)
-    class(aerosol_optics_type), intent(inout) :: this
-
-    !$ACC ENTER DATA COPYIN(this%iclass) IF(allocated(this%iclass)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%itype) IF(allocated(this%itype)) ASYNC(1)
-
-    !$ACC ENTER DATA COPYIN(this%wavenumber1_sw) IF(allocated(this%wavenumber1_sw)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%wavenumber2_sw) IF(allocated(this%wavenumber2_sw)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%wavenumber1_lw) IF(allocated(this%wavenumber1_lw)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%wavenumber2_lw) IF(allocated(this%wavenumber2_lw)) ASYNC(1)
-
-    !$ACC ENTER DATA COPYIN(this%mass_ext_sw_phobic) IF(allocated(this%mass_ext_sw_phobic)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%ssa_sw_phobic) IF(allocated(this%ssa_sw_phobic)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%g_sw_phobic) IF(allocated(this%g_sw_phobic)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%mass_ext_lw_phobic) IF(allocated(this%mass_ext_lw_phobic)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%ssa_lw_phobic) IF(allocated(this%ssa_lw_phobic)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%g_lw_phobic) IF(allocated(this%g_lw_phobic)) ASYNC(1)
-
-    !$ACC ENTER DATA COPYIN(this%mass_ext_sw_philic) IF(allocated(this%mass_ext_sw_philic)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%ssa_sw_philic) IF(allocated(this%ssa_sw_philic)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%g_sw_philic) IF(allocated(this%g_sw_philic)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%mass_ext_lw_philic) IF(allocated(this%mass_ext_lw_philic)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%ssa_lw_philic) IF(allocated(this%ssa_lw_philic)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%g_lw_philic) IF(allocated(this%g_lw_philic)) ASYNC(1)
-
-    !$ACC ENTER DATA COPYIN(this%wavelength_mono) IF(allocated(this%wavelength_mono)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%mass_ext_mono_phobic) IF(allocated(this%mass_ext_mono_phobic)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%ssa_mono_phobic) IF(allocated(this%ssa_mono_phobic)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%g_mono_phobic) IF(allocated(this%g_mono_phobic)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%lidar_ratio_mono_phobic) IF(allocated(this%lidar_ratio_mono_phobic)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%mass_ext_mono_philic) IF(allocated(this%mass_ext_mono_philic)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%ssa_mono_philic) IF(allocated(this%ssa_mono_philic)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%g_mono_philic) IF(allocated(this%g_mono_philic)) ASYNC(1)
-    !$ACC ENTER DATA COPYIN(this%lidar_ratio_mono_philic) IF(allocated(this%lidar_ratio_mono_philic)) ASYNC(1)
-
-    !$ACC ENTER DATA COPYIN(this%rh_lower) IF(allocated(this%rh_lower)) ASYNC(1)
-
-  end subroutine create_device
-
-  subroutine update_host(this)
-    class(aerosol_optics_type), intent(inout) :: this
-
-    !$ACC UPDATE HOST(this%iclass) IF(allocated(this%iclass)) ASYNC(1)
-    !$ACC UPDATE HOST(this%itype) IF(allocated(this%itype)) ASYNC(1)
-
-    !$ACC UPDATE HOST(this%wavenumber1_sw) IF(allocated(this%wavenumber1_sw)) ASYNC(1)
-    !$ACC UPDATE HOST(this%wavenumber2_sw) IF(allocated(this%wavenumber2_sw)) ASYNC(1)
-    !$ACC UPDATE HOST(this%wavenumber1_lw) IF(allocated(this%wavenumber1_lw)) ASYNC(1)
-    !$ACC UPDATE HOST(this%wavenumber2_lw) IF(allocated(this%wavenumber2_lw)) ASYNC(1)
-
-    !$ACC UPDATE HOST(this%mass_ext_sw_phobic) IF(allocated(this%mass_ext_sw_phobic)) ASYNC(1)
-    !$ACC UPDATE HOST(this%ssa_sw_phobic) IF(allocated(this%ssa_sw_phobic)) ASYNC(1)
-    !$ACC UPDATE HOST(this%g_sw_phobic) IF(allocated(this%g_sw_phobic)) ASYNC(1)
-    !$ACC UPDATE HOST(this%mass_ext_lw_phobic) IF(allocated(this%mass_ext_lw_phobic)) ASYNC(1)
-    !$ACC UPDATE HOST(this%ssa_lw_phobic) IF(allocated(this%ssa_lw_phobic)) ASYNC(1)
-    !$ACC UPDATE HOST(this%g_lw_phobic) IF(allocated(this%g_lw_phobic)) ASYNC(1)
-
-    !$ACC UPDATE HOST(this%mass_ext_sw_philic) IF(allocated(this%mass_ext_sw_philic)) ASYNC(1)
-    !$ACC UPDATE HOST(this%ssa_sw_philic) IF(allocated(this%ssa_sw_philic)) ASYNC(1)
-    !$ACC UPDATE HOST(this%g_sw_philic) IF(allocated(this%g_sw_philic)) ASYNC(1)
-    !$ACC UPDATE HOST(this%mass_ext_lw_philic) IF(allocated(this%mass_ext_lw_philic)) ASYNC(1)
-    !$ACC UPDATE HOST(this%ssa_lw_philic) IF(allocated(this%ssa_lw_philic)) ASYNC(1)
-    !$ACC UPDATE HOST(this%g_lw_philic) IF(allocated(this%g_lw_philic)) ASYNC(1)
-
-    !$ACC UPDATE HOST(this%wavelength_mono) IF(allocated(this%wavelength_mono)) ASYNC(1)
-    !$ACC UPDATE HOST(this%mass_ext_mono_phobic) IF(allocated(this%mass_ext_mono_phobic)) ASYNC(1)
-    !$ACC UPDATE HOST(this%ssa_mono_phobic) IF(allocated(this%ssa_mono_phobic)) ASYNC(1)
-    !$ACC UPDATE HOST(this%g_mono_phobic) IF(allocated(this%g_mono_phobic)) ASYNC(1)
-    !$ACC UPDATE HOST(this%lidar_ratio_mono_phobic) IF(allocated(this%lidar_ratio_mono_phobic)) ASYNC(1)
-    !$ACC UPDATE HOST(this%mass_ext_mono_philic) IF(allocated(this%mass_ext_mono_philic)) ASYNC(1)
-    !$ACC UPDATE HOST(this%ssa_mono_philic) IF(allocated(this%ssa_mono_philic)) ASYNC(1)
-    !$ACC UPDATE HOST(this%g_mono_philic) IF(allocated(this%g_mono_philic)) ASYNC(1)
-    !$ACC UPDATE HOST(this%lidar_ratio_mono_philic) IF(allocated(this%lidar_ratio_mono_philic)) ASYNC(1)
-
-    !$ACC UPDATE HOST(this%rh_lower) IF(allocated(this%rh_lower)) ASYNC(1)
-
-  end subroutine update_host
-
-  subroutine update_device(this)
-    class(aerosol_optics_type), intent(inout) :: this
-
-    !$ACC UPDATE DEVICE(this%iclass) IF(allocated(this%iclass)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%itype) IF(allocated(this%itype)) ASYNC(1)
-
-    !$ACC UPDATE DEVICE(this%wavenumber1_sw) IF(allocated(this%wavenumber1_sw)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%wavenumber2_sw) IF(allocated(this%wavenumber2_sw)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%wavenumber1_lw) IF(allocated(this%wavenumber1_lw)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%wavenumber2_lw) IF(allocated(this%wavenumber2_lw)) ASYNC(1)
-
-    !$ACC UPDATE DEVICE(this%mass_ext_sw_phobic) IF(allocated(this%mass_ext_sw_phobic)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%ssa_sw_phobic) IF(allocated(this%ssa_sw_phobic)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%g_sw_phobic) IF(allocated(this%g_sw_phobic)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%mass_ext_lw_phobic) IF(allocated(this%mass_ext_lw_phobic)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%ssa_lw_phobic) IF(allocated(this%ssa_lw_phobic)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%g_lw_phobic) IF(allocated(this%g_lw_phobic)) ASYNC(1)
-
-    !$ACC UPDATE DEVICE(this%mass_ext_sw_philic) IF(allocated(this%mass_ext_sw_philic)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%ssa_sw_philic) IF(allocated(this%ssa_sw_philic)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%g_sw_philic) IF(allocated(this%g_sw_philic)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%mass_ext_lw_philic) IF(allocated(this%mass_ext_lw_philic)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%ssa_lw_philic) IF(allocated(this%ssa_lw_philic)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%g_lw_philic) IF(allocated(this%g_lw_philic)) ASYNC(1)
-
-    !$ACC UPDATE DEVICE(this%wavelength_mono) IF(allocated(this%wavelength_mono)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%mass_ext_mono_phobic) IF(allocated(this%mass_ext_mono_phobic)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%ssa_mono_phobic) IF(allocated(this%ssa_mono_phobic)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%g_mono_phobic) IF(allocated(this%g_mono_phobic)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%lidar_ratio_mono_phobic) IF(allocated(this%lidar_ratio_mono_phobic)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%mass_ext_mono_philic) IF(allocated(this%mass_ext_mono_philic)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%ssa_mono_philic) IF(allocated(this%ssa_mono_philic)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%g_mono_philic) IF(allocated(this%g_mono_philic)) ASYNC(1)
-    !$ACC UPDATE DEVICE(this%lidar_ratio_mono_philic) IF(allocated(this%lidar_ratio_mono_philic)) ASYNC(1)
-
-    !$ACC UPDATE DEVICE(this%rh_lower) IF(allocated(this%rh_lower)) ASYNC(1)
-
-  end subroutine update_device
-
-  subroutine delete_device(this)
-    class(aerosol_optics_type), intent(inout) :: this
-
-    !$ACC EXIT DATA DELETE(this%iclass) IF(allocated(this%iclass)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%itype) IF(allocated(this%itype)) ASYNC(1)
-
-    !$ACC EXIT DATA DELETE(this%wavenumber1_sw) IF(allocated(this%wavenumber1_sw)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%wavenumber2_sw) IF(allocated(this%wavenumber2_sw)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%wavenumber1_lw) IF(allocated(this%wavenumber1_lw)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%wavenumber2_lw) IF(allocated(this%wavenumber2_lw)) ASYNC(1)
-
-    !$ACC EXIT DATA DELETE(this%mass_ext_sw_phobic) IF(allocated(this%mass_ext_sw_phobic)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%ssa_sw_phobic) IF(allocated(this%ssa_sw_phobic)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%g_sw_phobic) IF(allocated(this%g_sw_phobic)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%mass_ext_lw_phobic) IF(allocated(this%mass_ext_lw_phobic)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%ssa_lw_phobic) IF(allocated(this%ssa_lw_phobic)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%g_lw_phobic) IF(allocated(this%g_lw_phobic)) ASYNC(1)
-
-    !$ACC EXIT DATA DELETE(this%mass_ext_sw_philic) IF(allocated(this%mass_ext_sw_philic)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%ssa_sw_philic) IF(allocated(this%ssa_sw_philic)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%g_sw_philic) IF(allocated(this%g_sw_philic)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%mass_ext_lw_philic) IF(allocated(this%mass_ext_lw_philic)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%ssa_lw_philic) IF(allocated(this%ssa_lw_philic)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%g_lw_philic) IF(allocated(this%g_lw_philic)) ASYNC(1)
-
-    !$ACC EXIT DATA DELETE(this%wavelength_mono) IF(allocated(this%wavelength_mono)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%mass_ext_mono_phobic) IF(allocated(this%mass_ext_mono_phobic)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%ssa_mono_phobic) IF(allocated(this%ssa_mono_phobic)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%g_mono_phobic) IF(allocated(this%g_mono_phobic)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%lidar_ratio_mono_phobic) IF(allocated(this%lidar_ratio_mono_phobic)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%mass_ext_mono_philic) IF(allocated(this%mass_ext_mono_philic)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%ssa_mono_philic) IF(allocated(this%ssa_mono_philic)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%g_mono_philic) IF(allocated(this%g_mono_philic)) ASYNC(1)
-    !$ACC EXIT DATA DELETE(this%lidar_ratio_mono_philic) IF(allocated(this%lidar_ratio_mono_philic)) ASYNC(1)
-
-    !$ACC EXIT DATA DELETE(this%rh_lower) IF(allocated(this%rh_lower)) ASYNC(1)
-
-  end subroutine delete_device
-
-#endif
+  end function get_line_CPU
 
 end module radiation_aerosol_optics_data

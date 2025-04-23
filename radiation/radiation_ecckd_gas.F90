@@ -18,12 +18,12 @@
 
 module radiation_ecckd_gas
 
-  use parkind1, only : jprb
+  use parkind1
   use radiation_gas_constants
 
   implicit none
 
-  public
+  
 
   ! Concentration dependence of individual gases
   enum, bind(c)
@@ -71,8 +71,12 @@ module radiation_ecckd_gas
 
   contains
 
-    procedure :: read => read_ckd_gas
+    
 !    procedure :: deallocate => deallocate_ckd_gas
+
+  procedure :: read_GPU => read_ckd_gas_GPU
+
+  procedure :: read_CPU => read_ckd_gas_CPU
 
   end type ckd_gas_type
 
@@ -81,13 +85,48 @@ contains
   !---------------------------------------------------------------------
   ! Read information about the representation of a single gas from a
   ! NetCDF file, identifying it with code i_gas_code
-  subroutine read_ckd_gas(this, file, gas_name, i_gas_code)
+  
 
-#ifdef EASY_NETCDF_READ_MPI
-    use easy_netcdf_read_mpi, only : netcdf_file
-#else
-    use easy_netcdf,          only : netcdf_file
-#endif
+  subroutine read_ckd_gas_GPU(this, file, gas_name, i_gas_code, lacc)
+
+    use easy_netcdf
+
+    class(ckd_gas_type), intent(inout) :: this
+    type(netcdf_file),   intent(inout) :: file
+    character(len=*),    intent(in)    :: gas_name
+    integer,             intent(in)    :: i_gas_code
+    
+    ! Local storage for mole fraction coordinate variable
+    real(jprb), allocatable :: mole_fraction(:)
+    logical, intent (in) :: lacc
+
+    this%i_gas_code = i_gas_code
+
+    call file%get(gas_name // "_conc_dependence_code", this%i_conc_dependence)
+    if (this%i_conc_dependence == IConcDependenceLut) then
+      call file%get(gas_name // "_molar_absorption_coeff", &
+           &        this%molar_abs_conc)
+      call file%get(gas_name // "_mole_fraction", mole_fraction)
+      this%log_mole_frac1  = log(mole_fraction(1))
+      this%n_mole_frac     = size(mole_fraction)
+      this%d_log_mole_frac = (log(mole_fraction(size(mole_fraction))) &
+           &                  - this%log_mole_frac1) / (this%n_mole_frac-1)
+      deallocate(mole_fraction)
+    else
+      call file%get(gas_name // "_molar_absorption_coeff", &
+           &        this%molar_abs)
+    end if
+
+    if (this%i_conc_dependence == IConcDependenceRelativeLinear) then
+      call file%get(gas_name // "_reference_mole_fraction", &
+           &        this%reference_mole_frac)
+    end if
+
+  end subroutine read_ckd_gas_GPU
+
+  subroutine read_ckd_gas_CPU(this, file, gas_name, i_gas_code)
+
+    use easy_netcdf
 
     class(ckd_gas_type), intent(inout) :: this
     type(netcdf_file),   intent(inout) :: file
@@ -119,6 +158,6 @@ contains
            &        this%reference_mole_frac)
     end if
 
-  end subroutine read_ckd_gas
+  end subroutine read_ckd_gas_CPU
 
 end module radiation_ecckd_gas

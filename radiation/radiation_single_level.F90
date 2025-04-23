@@ -18,10 +18,10 @@
 
 module radiation_single_level
 
-  use parkind1, only : jprb
+  use parkind1
 
   implicit none
-  public
+  
 
   !---------------------------------------------------------------------
   ! Derived type to contain variables that don't vary with height;
@@ -93,17 +93,43 @@ module radiation_single_level
     !logical :: use_full_spectrum_lw = .true.
 
   contains
-    procedure :: allocate   => allocate_single_level
-    procedure :: deallocate => deallocate_single_level
-    procedure :: init_seed_simple
-    procedure :: get_albedos
-    procedure :: out_of_physical_bounds
-#ifdef _OPENACC
-    procedure :: create_device
-    procedure :: update_host
-    procedure :: update_device
-    procedure :: delete_device
-#endif
+    
+    
+    
+    
+    
+    
+    
+    
+    
+
+  procedure :: allocate_GPU   => allocate_single_level_GPU
+
+  procedure :: deallocate_GPU => deallocate_single_level_GPU
+
+  procedure :: init_seed_simple_GPU
+
+  procedure :: get_albedos_GPU
+
+  procedure :: out_of_physical_bounds_GPU
+
+  procedure :: create_device_GPU
+
+  procedure :: update_host_GPU
+
+  procedure :: update_device_GPU
+
+  procedure :: delete_device_GPU
+
+  procedure :: allocate_CPU   => allocate_single_level_CPU
+
+  procedure :: deallocate_CPU => deallocate_single_level_CPU
+
+  procedure :: init_seed_simple_CPU
+
+  procedure :: get_albedos_CPU
+
+  procedure :: out_of_physical_bounds_CPU
 
   end type single_level_type
 
@@ -111,10 +137,50 @@ contains
 
   !---------------------------------------------------------------------
   ! Allocate the arrays of a single-level type
-  subroutine allocate_single_level(this, ncol, nalbedobands, nemisbands, &
-       &                           use_sw_albedo_direct, is_simple_surface)
+  
 
-    use yomhook, only : lhook, dr_hook, jphook
+
+  !---------------------------------------------------------------------
+  ! Deallocate the arrays of a single-level type
+  
+
+
+  !---------------------------------------------------------------------
+  ! Unimaginative initialization of random-number seeds
+  
+
+
+  !---------------------------------------------------------------------
+  ! Extract the shortwave and longwave surface albedos in each g-point
+  
+
+
+  !---------------------------------------------------------------------
+  ! Return .true. if the contents of a single_level structure are out
+  ! of a physically sensible range, optionally only considering only
+  ! columns between istartcol and iendcol
+  
+
+  !---------------------------------------------------------------------
+  ! creates fields on device
+  
+
+  !---------------------------------------------------------------------
+  ! updates fields on host
+  
+
+  !---------------------------------------------------------------------
+  ! updates fields on device
+  
+
+  !---------------------------------------------------------------------
+  ! deletes fields on device
+  
+
+  subroutine allocate_single_level_GPU(this, ncol, nalbedobands, nemisbands, &
+       &                           use_sw_albedo_direct, is_simple_surface, lacc)
+
+    use yomhook
 
     class(single_level_type), intent(inout) :: this
     integer,                  intent(in)    :: ncol, nalbedobands, nemisbands
@@ -122,10 +188,11 @@ contains
     logical,        optional, intent(in)    :: is_simple_surface
 
     real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
 
     if (lhook) call dr_hook('radiation_single_level:allocate',0,hook_handle)
 
-    call this%deallocate()
+    call this%deallocate_GPU(lacc=lacc)
 
     if (present(is_simple_surface)) then
       this%is_simple_surface = is_simple_surface
@@ -154,18 +221,16 @@ contains
 
     if (lhook) call dr_hook('radiation_single_level:allocate',1,hook_handle)
 
-  end subroutine allocate_single_level
+  end subroutine allocate_single_level_GPU
 
+  subroutine deallocate_single_level_GPU(this, lacc)
 
-  !---------------------------------------------------------------------
-  ! Deallocate the arrays of a single-level type
-  subroutine deallocate_single_level(this)
-
-    use yomhook, only : lhook, dr_hook, jphook
+    use yomhook
 
     class(single_level_type), intent(inout) :: this
 
     real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
 
     if (lhook) call dr_hook('radiation_single_level:deallocate',0,hook_handle)
 
@@ -196,12 +261,9 @@ contains
 
     if (lhook) call dr_hook('radiation_single_level:deallocate',1,hook_handle)
 
-  end subroutine deallocate_single_level
+  end subroutine deallocate_single_level_GPU
 
-
-  !---------------------------------------------------------------------
-  ! Unimaginative initialization of random-number seeds
-  subroutine init_seed_simple(this, istartcol, iendcol, lacc)
+  subroutine init_seed_simple_GPU(this, istartcol, iendcol, lacc)
     class(single_level_type), intent(inout) :: this
     integer, intent(in)                     :: istartcol, iendcol
     logical, optional, intent(in)           :: lacc
@@ -226,17 +288,14 @@ contains
     end do
     !$ACC END PARALLEL
 
-  end subroutine init_seed_simple
+  end subroutine init_seed_simple_GPU
 
+  subroutine get_albedos_GPU(this, istartcol, iendcol, config, &
+       &                 sw_albedo_direct, sw_albedo_diffuse, lw_albedo, lacc)
 
-  !---------------------------------------------------------------------
-  ! Extract the shortwave and longwave surface albedos in each g-point
-  subroutine get_albedos(this, istartcol, iendcol, config, &
-       &                 sw_albedo_direct, sw_albedo_diffuse, lw_albedo)
-
-    use radiation_config, only : config_type
-    use radiation_io,     only : nulerr, radiation_abort
-    use yomhook,          only : lhook, dr_hook, jphook
+    use radiation_config
+    use radiation_io
+    use yomhook
 
     class(single_level_type), intent(in) :: this
     type(config_type),        intent(in) :: config
@@ -265,10 +324,11 @@ contains
     integer :: jband, jalbedoband, jg, jcol
 
     real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
 
     if (lhook) call dr_hook('radiation_single_level:get_albedos',0,hook_handle)
 
-    !$ACC DATA CREATE(sw_albedo_band, lw_albedo_band) ASYNC(1)
+    !$ACC DATA CREATE(sw_albedo_band, lw_albedo_band) ASYNC(1) IF(lacc)
 
     if (config%do_sw) then
       ! Albedos/emissivities are stored in single_level in their own
@@ -293,7 +353,7 @@ contains
           call radiation_abort()
         end if
 
-        !$ACC PARALLEL DEFAULT(PRESENT) ASYNC(1)
+        !$ACC PARALLEL DEFAULT(PRESENT) ASYNC(1) IF(lacc)
         !$ACC LOOP SEQ
         do jband = 1,config%n_bands_sw
         !$ACC LOOP GANG(STATIC:1) VECTOR
@@ -306,9 +366,6 @@ contains
         do jband = 1,config%n_bands_sw
           !$ACC LOOP SEQ
           do jalbedoband = 1,nalbedoband
-#ifndef _OPENACC
-            if (config%sw_albedo_weights(jalbedoband,jband) /= 0.0_jprb) then
-#endif
               !$ACC LOOP GANG(STATIC:1) VECTOR
               do jcol = istartcol,iendcol
                 sw_albedo_band(jcol,jband) &
@@ -316,16 +373,9 @@ contains
                     &  + config%sw_albedo_weights(jalbedoband,jband) &
                     &    * this%sw_albedo(jcol, jalbedoband)
               end do
-#ifndef _OPENACC
-            end if
-#endif
           end do
         end do
 
-#ifndef _OPENACC
-        sw_albedo_diffuse = transpose(sw_albedo_band(istartcol:iendcol, &
-             &                              config%i_band_from_reordered_g_sw))
-#else
         !$ACC LOOP GANG(STATIC:1) VECTOR
         do jcol = istartcol,iendcol
           !$ACC LOOP SEQ
@@ -334,7 +384,6 @@ contains
                 &                             config%i_band_from_reordered_g_sw(jg))
           end do
         end do
-#endif
         if (allocated(this%sw_albedo_direct)) then
           !$ACC LOOP SEQ
           do jband = 1,config%n_bands_sw
@@ -348,9 +397,6 @@ contains
           do jband = 1,config%n_bands_sw
             !$ACC LOOP SEQ
             do jalbedoband = 1,nalbedoband
-#ifndef _OPENACC
-              if (config%sw_albedo_weights(jalbedoband,jband) /= 0.0_jprb) then
-#endif
                 !$ACC LOOP GANG(STATIC:1) VECTOR
                 do jcol = istartcol,iendcol
                   sw_albedo_band(jcol,jband) &
@@ -358,15 +404,8 @@ contains
                      &  + config%sw_albedo_weights(jalbedoband,jband) &
                      &    * this%sw_albedo_direct(jcol, jalbedoband)
                 end do
-#ifndef _OPENACC
-              end if
-#endif
             end do
           end do
-#ifndef _OPENACC
-          sw_albedo_direct = transpose(sw_albedo_band(istartcol:iendcol, &
-               &                             config%i_band_from_reordered_g_sw))
-#else
         !$ACC LOOP GANG(STATIC:1) VECTOR
         do jcol = istartcol,iendcol
           !$ACC LOOP SEQ
@@ -375,7 +414,6 @@ contains
                 &                         config%i_band_from_reordered_g_sw(jg))
           end do
         end do
-#endif
         else
           !$ACC LOOP GANG(STATIC:1) VECTOR
           do jcol = istartcol,iendcol
@@ -448,11 +486,7 @@ contains
                &  maxval(config%i_emiss_from_band_lw), ' bands'
           call radiation_abort()
         end if
-#ifndef _OPENACC
-        lw_albedo = 1.0_jprb - transpose(this%lw_emissivity(istartcol:iendcol, &
-             &  config%i_emiss_from_band_lw(config%i_band_from_reordered_g_lw)))
-#else
-        !$ACC PARALLEL DEFAULT(PRESENT) ASYNC(1)
+        !$ACC PARALLEL DEFAULT(PRESENT) ASYNC(1) IF(lacc)
         !$ACC LOOP GANG VECTOR COLLAPSE(2)
         do jcol = istartcol,iendcol
           do jg = 1,config%n_g_lw
@@ -461,26 +495,492 @@ contains
           end do
         end do
         !$ACC END PARALLEL
-#endif
       end if
     end if
 
-    !$ACC WAIT
+    !$ACC WAIT IF(lacc)
     !$ACC END DATA
 
     if (lhook) call dr_hook('radiation_single_level:get_albedos',1,hook_handle)
 
-  end subroutine get_albedos
+  end subroutine get_albedos_GPU
 
+  function out_of_physical_bounds_GPU(this, istartcol, iendcol, do_fix, lacc) result(is_bad)
 
-  !---------------------------------------------------------------------
-  ! Return .true. if the contents of a single_level structure are out
-  ! of a physically sensible range, optionally only considering only
-  ! columns between istartcol and iendcol
-  function out_of_physical_bounds(this, istartcol, iendcol, do_fix) result(is_bad)
+    use yomhook
+    use radiation_check
 
-    use yomhook,          only : lhook, dr_hook, jphook
-    use radiation_check,  only : out_of_bounds_1d, out_of_bounds_2d
+    class(single_level_type), intent(inout) :: this
+    integer,         optional,intent(in) :: istartcol, iendcol
+    logical,         optional,intent(in) :: do_fix
+    logical                              :: is_bad
+
+    logical    :: do_fix_local
+
+    real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
+
+    if (lhook) call dr_hook('radiation_single_level:out_of_physical_bounds',0,hook_handle)
+
+    if (present(do_fix)) then
+      do_fix_local = do_fix
+    else
+      do_fix_local = .false.
+    end if
+
+    is_bad =    out_of_bounds_1d(this%cos_sza, "cos_sza", -1.0_jprb, 1.0_jprb, &
+         &                       do_fix_local, i1=istartcol, i2=iendcol) &
+         & .or. out_of_bounds_1d(this%skin_temperature, "skin_temperature", 173.0_jprb, 373.0_jprb, &
+         &                       do_fix_local, i1=istartcol, i2=iendcol) &
+         & .or. out_of_bounds_2d(this%sw_albedo, "sw_albedo", 0.0_jprb, 1.0_jprb, &
+         &                       do_fix_local, i1=istartcol, i2=iendcol) &
+         & .or. out_of_bounds_2d(this%sw_albedo_direct, "sw_albedo", 0.0_jprb, 1.0_jprb, &
+         &                       do_fix_local, i1=istartcol, i2=iendcol) &
+         & .or. out_of_bounds_2d(this%lw_emissivity, "lw_emissivity", 0.0_jprb, 1.0_jprb, &
+         &                       do_fix_local, i1=istartcol, i2=iendcol)
+
+    if (lhook) call dr_hook('radiation_single_level:out_of_physical_bounds',1,hook_handle)
+
+  end function out_of_physical_bounds_GPU
+
+  subroutine create_device_GPU(this, lacc)
+
+    class(single_level_type), intent(inout) :: this
+    logical, intent (in) :: lacc
+
+    !$ACC ENTER DATA CREATE(this%cos_sza) ASYNC(1) &
+    !$ACC   IF((allocated(this%cos_sza)) .AND. lacc)
+
+    !$ACC ENTER DATA CREATE(this%skin_temperature) ASYNC(1) &
+    !$ACC   IF((allocated(this%skin_temperature)) .AND. lacc)
+
+    !$ACC ENTER DATA CREATE(this%sw_albedo) ASYNC(1) &
+    !$ACC   IF((allocated(this%sw_albedo)) .AND. lacc)
+
+    !$ACC ENTER DATA CREATE(this%sw_albedo_direct) ASYNC(1) &
+    !$ACC   IF((allocated(this%sw_albedo_direct)) .AND. lacc)
+
+    !$ACC ENTER DATA CREATE(this%lw_emissivity) ASYNC(1) &
+    !$ACC   IF((allocated(this%lw_emissivity)) .AND. lacc)
+
+    !$ACC ENTER DATA CREATE(this%lw_emission) ASYNC(1) &
+    !$ACC   IF((allocated(this%lw_emission)) .AND. lacc)
+
+    !$ACC ENTER DATA CREATE(this%spectral_solar_scaling) ASYNC(1) &
+    !$ACC   IF((allocated(this%spectral_solar_scaling)) .AND. lacc)
+
+    !$ACC ENTER DATA CREATE(this%iseed) ASYNC(1) &
+    !$ACC   IF((allocated(this%iseed)) .AND. lacc)
+
+  end subroutine create_device_GPU
+
+  subroutine update_host_GPU(this, lacc)
+
+    class(single_level_type), intent(inout) :: this
+    logical, intent (in) :: lacc
+
+    !$ACC UPDATE HOST(this%cos_sza) ASYNC(1) &
+    !$ACC   IF((allocated(this%cos_sza)) .AND. lacc)
+
+    !$ACC UPDATE HOST(this%skin_temperature) ASYNC(1) &
+    !$ACC   IF((allocated(this%skin_temperature)) .AND. lacc)
+
+    !$ACC UPDATE HOST(this%sw_albedo) ASYNC(1) &
+    !$ACC   IF((allocated(this%sw_albedo)) .AND. lacc)
+
+    !$ACC UPDATE HOST(this%sw_albedo_direct) ASYNC(1) &
+    !$ACC   IF((allocated(this%sw_albedo_direct)) .AND. lacc)
+
+    !$ACC UPDATE HOST(this%lw_emissivity) ASYNC(1) &
+    !$ACC   IF((allocated(this%lw_emissivity)) .AND. lacc)
+
+    !$ACC UPDATE HOST(this%lw_emission) ASYNC(1) &
+    !$ACC   IF((allocated(this%lw_emission)) .AND. lacc)
+
+    !$ACC UPDATE HOST(this%spectral_solar_scaling) ASYNC(1) &
+    !$ACC   IF((allocated(this%spectral_solar_scaling)) .AND. lacc)
+
+    !$ACC UPDATE HOST(this%iseed) ASYNC(1) &
+    !$ACC   IF((allocated(this%iseed)) .AND. lacc)
+
+  end subroutine update_host_GPU
+
+  subroutine update_device_GPU(this, lacc)
+
+    class(single_level_type), intent(inout) :: this
+    logical, intent (in) :: lacc
+
+    !$ACC UPDATE DEVICE(this%cos_sza) ASYNC(1) &
+    !$ACC   IF((allocated(this%cos_sza)) .AND. lacc)
+
+    !$ACC UPDATE DEVICE(this%skin_temperature) ASYNC(1) &
+    !$ACC   IF((allocated(this%skin_temperature)) .AND. lacc)
+
+    !$ACC UPDATE DEVICE(this%sw_albedo) ASYNC(1) &
+    !$ACC   IF((allocated(this%sw_albedo)) .AND. lacc)
+
+    !$ACC UPDATE DEVICE(this%sw_albedo_direct) ASYNC(1) &
+    !$ACC   IF((allocated(this%sw_albedo_direct)) .AND. lacc)
+
+    !$ACC UPDATE DEVICE(this%lw_emissivity) ASYNC(1) &
+    !$ACC   IF((allocated(this%lw_emissivity)) .AND. lacc)
+
+    !$ACC UPDATE DEVICE(this%lw_emission) ASYNC(1) &
+    !$ACC   IF((allocated(this%lw_emission)) .AND. lacc)
+
+    !$ACC UPDATE DEVICE(this%spectral_solar_scaling) ASYNC(1) &
+    !$ACC   IF( (allocated(this%spectral_solar_scaling)) .AND. lacc)
+
+    !$ACC UPDATE DEVICE(this%iseed) ASYNC(1) &
+    !$ACC   IF((allocated(this%iseed)) .AND. lacc)
+
+  end subroutine update_device_GPU
+
+  subroutine delete_device_GPU(this, lacc)
+
+    class(single_level_type), intent(inout) :: this
+    logical, intent (in) :: lacc
+
+    !$ACC EXIT DATA DELETE(this%cos_sza) ASYNC(1) &
+    !$ACC   IF((allocated(this%cos_sza)) .AND. lacc)
+
+    !$ACC EXIT DATA DELETE(this%skin_temperature) ASYNC(1) &
+    !$ACC   IF((allocated(this%skin_temperature)) .AND. lacc)
+
+    !$ACC EXIT DATA DELETE(this%sw_albedo) ASYNC(1) &
+    !$ACC   IF((allocated(this%sw_albedo)) .AND. lacc)
+
+    !$ACC EXIT DATA DELETE(this%sw_albedo_direct) ASYNC(1) &
+    !$ACC   IF((allocated(this%sw_albedo_direct)) .AND. lacc)
+
+    !$ACC EXIT DATA DELETE(this%lw_emissivity) ASYNC(1) &
+    !$ACC   IF((allocated(this%lw_emissivity)) .AND. lacc)
+
+    !$ACC EXIT DATA DELETE(this%lw_emission) ASYNC(1) &
+    !$ACC   IF((allocated(this%lw_emission)) .AND. lacc)
+
+    !$ACC EXIT DATA DELETE(this%spectral_solar_scaling) ASYNC(1) &
+    !$ACC   IF((allocated(this%spectral_solar_scaling)) .AND. lacc)
+
+    !$ACC EXIT DATA DELETE(this%iseed) ASYNC(1) &
+    !$ACC   IF((allocated(this%iseed)) .AND. lacc)
+
+  end subroutine delete_device_GPU
+
+  subroutine allocate_single_level_CPU(this, ncol, nalbedobands, nemisbands, &
+       &                           use_sw_albedo_direct, is_simple_surface)
+
+    use yomhook
+
+    class(single_level_type), intent(inout) :: this
+    integer,                  intent(in)    :: ncol, nalbedobands, nemisbands
+    logical,        optional, intent(in)    :: use_sw_albedo_direct
+    logical,        optional, intent(in)    :: is_simple_surface
+
+    real(jphook) :: hook_handle
+
+    if (lhook) call dr_hook('radiation_single_level:allocate',0,hook_handle)
+
+    call this%deallocate_CPU()
+
+    if (present(is_simple_surface)) then
+      this%is_simple_surface = is_simple_surface
+    else
+      this%is_simple_surface = .true.
+    end if
+
+    allocate(this%cos_sza(ncol))
+
+    if (this%is_simple_surface) then
+      allocate(this%skin_temperature(ncol))
+    else
+      allocate(this%lw_emission(ncol, nemisbands))
+    end if
+    allocate(this%lw_emissivity(ncol, nemisbands))
+
+    allocate(this%sw_albedo(ncol, nalbedobands))
+
+    if (present(use_sw_albedo_direct)) then
+      if (use_sw_albedo_direct) then
+        allocate(this%sw_albedo_direct(ncol, nalbedobands))
+      end if
+    end if
+
+    allocate(this%iseed(ncol))
+
+    if (lhook) call dr_hook('radiation_single_level:allocate',1,hook_handle)
+
+  end subroutine allocate_single_level_CPU
+
+  subroutine deallocate_single_level_CPU(this)
+
+    use yomhook
+
+    class(single_level_type), intent(inout) :: this
+
+    real(jphook) :: hook_handle
+
+    if (lhook) call dr_hook('radiation_single_level:deallocate',0,hook_handle)
+
+    if (allocated(this%cos_sza)) then
+      deallocate(this%cos_sza)
+    end if
+    if (allocated(this%skin_temperature)) then
+      deallocate(this%skin_temperature)
+    end if
+    if (allocated(this%sw_albedo)) then
+      deallocate(this%sw_albedo)
+    end if
+    if (allocated(this%sw_albedo_direct)) then
+      deallocate(this%sw_albedo_direct)
+    end if
+    if (allocated(this%lw_emissivity)) then
+      deallocate(this%lw_emissivity)
+    end if
+    if (allocated(this%lw_emission)) then
+      deallocate(this%lw_emission)
+    end if
+    if (allocated(this%spectral_solar_scaling)) then
+      deallocate(this%spectral_solar_scaling)
+    end if
+    if (allocated(this%iseed)) then
+      deallocate(this%iseed)
+    end if
+
+    if (lhook) call dr_hook('radiation_single_level:deallocate',1,hook_handle)
+
+  end subroutine deallocate_single_level_CPU
+
+  subroutine init_seed_simple_CPU(this, istartcol, iendcol, lacc)
+    class(single_level_type), intent(inout) :: this
+    integer, intent(in)                     :: istartcol, iendcol
+    logical, optional, intent(in)           :: lacc
+
+    integer :: jcol
+    logical :: llacc
+
+    if (present(lacc)) then
+        llacc = lacc
+    else
+        llacc = .false.
+    endif
+
+    if (.not. allocated(this%iseed)) then
+      allocate(this%iseed(istartcol:iendcol))
+    end if
+
+    
+    
+    do jcol = istartcol,iendcol
+      this%iseed(jcol) = jcol
+    end do
+    
+
+  end subroutine init_seed_simple_CPU
+
+  subroutine get_albedos_CPU(this, istartcol, iendcol, config, &
+       &                 sw_albedo_direct, sw_albedo_diffuse, lw_albedo)
+
+    use radiation_config
+    use radiation_io
+    use yomhook
+
+    class(single_level_type), intent(in) :: this
+    type(config_type),        intent(in) :: config
+    integer,                  intent(in) :: istartcol, iendcol
+
+    ! The longwave albedo of the surface in each longwave g-point;
+    ! note that these are weighted averages of the values from
+    ! individual tiles
+    real(jprb), intent(out), optional &
+         &  :: lw_albedo(config%n_g_lw, istartcol:iendcol)
+
+    ! Direct and diffuse shortwave surface albedo in each shortwave
+    ! g-point; note that these are weighted averages of the values
+    ! from individual tiles
+    real(jprb), intent(out), dimension(config%n_g_sw, istartcol:iendcol) &
+         &  :: sw_albedo_direct, sw_albedo_diffuse
+
+    ! Temporary storage of albedo in ecRad bands
+    real(jprb) :: sw_albedo_band(istartcol:iendcol, config%n_bands_sw)
+    real(jprb) :: lw_albedo_band(istartcol:iendcol, config%n_bands_lw)
+
+    ! Number of albedo bands
+    integer :: nalbedoband
+
+    ! Loop indices for ecRad bands and albedo bands
+    integer :: jband, jalbedoband, jg, jcol
+
+    real(jphook) :: hook_handle
+
+    if (lhook) call dr_hook('radiation_single_level:get_albedos',0,hook_handle)
+
+    
+
+    if (config%do_sw) then
+      ! Albedos/emissivities are stored in single_level in their own
+      ! spectral intervals and with column as the first dimension
+      if (config%use_canopy_full_spectrum_sw) then
+        ! Albedos provided in each g point
+        if (size(this%sw_albedo,2) /= config%n_g_sw) then
+          write(nulerr,'(a,i0,a)') '*** Error: single_level%sw_albedo does not have the expected ', &
+               &  config%n_g_sw, ' spectral intervals'
+          call radiation_abort()
+        end if
+        sw_albedo_diffuse = transpose(this%sw_albedo(istartcol:iendcol,:))
+        if (allocated(this%sw_albedo_direct)) then
+          sw_albedo_direct = transpose(this%sw_albedo_direct(istartcol:iendcol,:))
+        end if
+      else if (.not. config%do_nearest_spectral_sw_albedo) then
+        ! Albedos averaged accurately to ecRad spectral bands
+        nalbedoband = size(config%sw_albedo_weights,1)
+        if (size(this%sw_albedo,2) /= nalbedoband) then
+          write(nulerr,'(a,i0,a)') '*** Error: single_level%sw_albedo does not have the expected ', &
+               &  nalbedoband, ' bands'
+          call radiation_abort()
+        end if
+
+        
+        
+        do jband = 1,config%n_bands_sw
+        
+          do jcol = istartcol,iendcol
+            sw_albedo_band(jcol,jband) = 0.0_jprb
+          end do
+        end do
+
+        
+        do jband = 1,config%n_bands_sw
+          
+          do jalbedoband = 1,nalbedoband
+            if (config%sw_albedo_weights(jalbedoband,jband) /= 0.0_jprb) then
+              
+              do jcol = istartcol,iendcol
+                sw_albedo_band(jcol,jband) &
+                    &  = sw_albedo_band(jcol,jband) &
+                    &  + config%sw_albedo_weights(jalbedoband,jband) &
+                    &    * this%sw_albedo(jcol, jalbedoband)
+              end do
+            end if
+          end do
+        end do
+
+        sw_albedo_diffuse = transpose(sw_albedo_band(istartcol:iendcol, &
+             &                              config%i_band_from_reordered_g_sw))
+        if (allocated(this%sw_albedo_direct)) then
+          
+          do jband = 1,config%n_bands_sw
+            
+            do jcol = istartcol,iendcol
+              sw_albedo_band(jcol,jband) = 0.0_jprb
+            end do
+          end do
+
+          
+          do jband = 1,config%n_bands_sw
+            
+            do jalbedoband = 1,nalbedoband
+              if (config%sw_albedo_weights(jalbedoband,jband) /= 0.0_jprb) then
+                
+                do jcol = istartcol,iendcol
+                  sw_albedo_band(jcol,jband) &
+                     &  = sw_albedo_band(jcol,jband) &
+                     &  + config%sw_albedo_weights(jalbedoband,jband) &
+                     &    * this%sw_albedo_direct(jcol, jalbedoband)
+                end do
+              end if
+            end do
+          end do
+          sw_albedo_direct = transpose(sw_albedo_band(istartcol:iendcol, &
+               &                             config%i_band_from_reordered_g_sw))
+        else
+          
+          do jcol = istartcol,iendcol
+            
+            do jg = 1,config%n_g_sw
+              sw_albedo_direct(jg,jcol) = sw_albedo_diffuse(jg,jcol)
+            end do
+          end do
+        end if
+        
+      else
+        ! Albedos mapped less accurately to ecRad spectral bands
+        if (maxval(config%i_albedo_from_band_sw) > size(this%sw_albedo,2)) then
+          write(nulerr,'(a,i0,a)') '*** Error: single_level%sw_albedo has fewer than required ', &
+               &  maxval(config%i_albedo_from_band_sw), ' bands'
+          call radiation_abort()
+        end if
+        sw_albedo_diffuse = transpose(this%sw_albedo(istartcol:iendcol, &
+             &  config%i_albedo_from_band_sw(config%i_band_from_reordered_g_sw)))
+        if (allocated(this%sw_albedo_direct)) then
+          sw_albedo_direct = transpose(this%sw_albedo_direct(istartcol:iendcol, &
+               &  config%i_albedo_from_band_sw(config%i_band_from_reordered_g_sw)))
+        else
+          sw_albedo_direct = sw_albedo_diffuse
+        end if
+      end if
+    end if
+
+    if (config%do_lw .and. present(lw_albedo)) then
+      if (config%use_canopy_full_spectrum_lw) then
+        if (config%n_g_lw /= size(this%lw_emissivity,2)) then
+          write(nulerr,'(a,i0,a)') '*** Error: single_level%lw_emissivity does not have the expected ', &
+               &  config%n_g_lw, ' spectral intervals'
+          call radiation_abort()
+        end if
+        lw_albedo = 1.0_jprb - transpose(this%lw_emissivity(istartcol:iendcol,:))
+      else if (.not. config%do_nearest_spectral_lw_emiss) then
+        ! Albedos averaged accurately to ecRad spectral bands
+        nalbedoband = size(config%lw_emiss_weights,1)
+        if (nalbedoband /= size(this%lw_emissivity,2)) then
+          write(nulerr,'(a,i0,a)') '*** Error: single_level%lw_emissivity does not have the expected ', &
+               &  nalbedoband, ' bands'
+          call radiation_abort()
+        end if
+
+        do jband = 1,config%n_bands_lw
+          do jcol = istartcol,iendcol
+            lw_albedo_band(jcol,jband) = 0.0_jprb
+          end do
+        end do
+
+        do jband = 1,config%n_bands_lw
+          do jalbedoband = 1,nalbedoband
+            if (config%lw_emiss_weights(jalbedoband,jband) /= 0.0_jprb) then
+              do jcol = istartcol,iendcol
+                lw_albedo_band(jcol,jband) &
+                    &  = lw_albedo_band(jcol,jband) &
+                    &  + config%lw_emiss_weights(jalbedoband,jband) &
+                    &    * (1.0_jprb-this%lw_emissivity(jcol, jalbedoband))
+              end do
+            end if
+          end do
+        end do
+
+        lw_albedo = transpose(lw_albedo_band(istartcol:iendcol, &
+             &                config%i_band_from_reordered_g_lw))
+      else
+        if (maxval(config%i_emiss_from_band_lw) > size(this%lw_emissivity,2)) then
+          write(nulerr,'(a,i0,a)') '*** Error: single_level%lw_emissivity has fewer than required ', &
+               &  maxval(config%i_emiss_from_band_lw), ' bands'
+          call radiation_abort()
+        end if
+        lw_albedo = 1.0_jprb - transpose(this%lw_emissivity(istartcol:iendcol, &
+             &  config%i_emiss_from_band_lw(config%i_band_from_reordered_g_lw)))
+      end if
+    end if
+
+    
+    
+
+    if (lhook) call dr_hook('radiation_single_level:get_albedos',1,hook_handle)
+
+  end subroutine get_albedos_CPU
+
+  function out_of_physical_bounds_CPU(this, istartcol, iendcol, do_fix) result(is_bad)
+
+    use yomhook
+    use radiation_check
 
     class(single_level_type), intent(inout) :: this
     integer,         optional,intent(in) :: istartcol, iendcol
@@ -512,136 +1012,6 @@ contains
 
     if (lhook) call dr_hook('radiation_single_level:out_of_physical_bounds',1,hook_handle)
 
-  end function out_of_physical_bounds
-
-#ifdef _OPENACC
-  !---------------------------------------------------------------------
-  ! creates fields on device
-  subroutine create_device(this)
-
-    class(single_level_type), intent(inout) :: this
-
-    !$ACC ENTER DATA CREATE(this%cos_sza) ASYNC(1) &
-    !$ACC   IF(allocated(this%cos_sza))
-
-    !$ACC ENTER DATA CREATE(this%skin_temperature) ASYNC(1) &
-    !$ACC   IF(allocated(this%skin_temperature))
-
-    !$ACC ENTER DATA CREATE(this%sw_albedo) ASYNC(1) &
-    !$ACC   IF(allocated(this%sw_albedo))
-
-    !$ACC ENTER DATA CREATE(this%sw_albedo_direct) ASYNC(1) &
-    !$ACC   IF(allocated(this%sw_albedo_direct))
-
-    !$ACC ENTER DATA CREATE(this%lw_emissivity) ASYNC(1) &
-    !$ACC   IF(allocated(this%lw_emissivity))
-
-    !$ACC ENTER DATA CREATE(this%lw_emission) ASYNC(1) &
-    !$ACC   IF(allocated(this%lw_emission))
-
-    !$ACC ENTER DATA CREATE(this%spectral_solar_scaling) ASYNC(1) &
-    !$ACC   IF(allocated(this%spectral_solar_scaling))
-
-    !$ACC ENTER DATA CREATE(this%iseed) ASYNC(1) &
-    !$ACC   IF(allocated(this%iseed))
-
-  end subroutine create_device
-
-  !---------------------------------------------------------------------
-  ! updates fields on host
-  subroutine update_host(this)
-
-    class(single_level_type), intent(inout) :: this
-
-    !$ACC UPDATE HOST(this%cos_sza) ASYNC(1) &
-    !$ACC   IF(allocated(this%cos_sza))
-
-    !$ACC UPDATE HOST(this%skin_temperature) ASYNC(1) &
-    !$ACC   IF(allocated(this%skin_temperature))
-
-    !$ACC UPDATE HOST(this%sw_albedo) ASYNC(1) &
-    !$ACC   IF(allocated(this%sw_albedo))
-
-    !$ACC UPDATE HOST(this%sw_albedo_direct) ASYNC(1) &
-    !$ACC   IF(allocated(this%sw_albedo_direct))
-
-    !$ACC UPDATE HOST(this%lw_emissivity) ASYNC(1) &
-    !$ACC   IF(allocated(this%lw_emissivity))
-
-    !$ACC UPDATE HOST(this%lw_emission) ASYNC(1) &
-    !$ACC   IF(allocated(this%lw_emission))
-
-    !$ACC UPDATE HOST(this%spectral_solar_scaling) ASYNC(1) &
-    !$ACC   IF(allocated(this%spectral_solar_scaling))
-
-    !$ACC UPDATE HOST(this%iseed) ASYNC(1) &
-    !$ACC   IF(allocated(this%iseed))
-
-  end subroutine update_host
-
-  !---------------------------------------------------------------------
-  ! updates fields on device
-  subroutine update_device(this)
-
-    class(single_level_type), intent(inout) :: this
-
-    !$ACC UPDATE DEVICE(this%cos_sza) ASYNC(1) &
-    !$ACC   IF(allocated(this%cos_sza))
-
-    !$ACC UPDATE DEVICE(this%skin_temperature) ASYNC(1) &
-    !$ACC   IF(allocated(this%skin_temperature))
-
-    !$ACC UPDATE DEVICE(this%sw_albedo) ASYNC(1) &
-    !$ACC   IF(allocated(this%sw_albedo))
-
-    !$ACC UPDATE DEVICE(this%sw_albedo_direct) ASYNC(1) &
-    !$ACC   IF(allocated(this%sw_albedo_direct))
-
-    !$ACC UPDATE DEVICE(this%lw_emissivity) ASYNC(1) &
-    !$ACC   IF(allocated(this%lw_emissivity))
-
-    !$ACC UPDATE DEVICE(this%lw_emission) ASYNC(1) &
-    !$ACC   IF(allocated(this%lw_emission))
-
-    !$ACC UPDATE DEVICE(this%spectral_solar_scaling) ASYNC(1) &
-    !$ACC   IF( allocated(this%spectral_solar_scaling))
-
-    !$ACC UPDATE DEVICE(this%iseed) ASYNC(1) &
-    !$ACC   IF(allocated(this%iseed))
-
-  end subroutine update_device
-
-  !---------------------------------------------------------------------
-  ! deletes fields on device
-  subroutine delete_device(this)
-
-    class(single_level_type), intent(inout) :: this
-
-    !$ACC EXIT DATA DELETE(this%cos_sza) ASYNC(1) &
-    !$ACC   IF(allocated(this%cos_sza))
-
-    !$ACC EXIT DATA DELETE(this%skin_temperature) ASYNC(1) &
-    !$ACC   IF(allocated(this%skin_temperature))
-
-    !$ACC EXIT DATA DELETE(this%sw_albedo) ASYNC(1) &
-    !$ACC   IF(allocated(this%sw_albedo))
-
-    !$ACC EXIT DATA DELETE(this%sw_albedo_direct) ASYNC(1) &
-    !$ACC   IF(allocated(this%sw_albedo_direct))
-
-    !$ACC EXIT DATA DELETE(this%lw_emissivity) ASYNC(1) &
-    !$ACC   IF(allocated(this%lw_emissivity))
-
-    !$ACC EXIT DATA DELETE(this%lw_emission) ASYNC(1) &
-    !$ACC   IF(allocated(this%lw_emission))
-
-    !$ACC EXIT DATA DELETE(this%spectral_solar_scaling) ASYNC(1) &
-    !$ACC   IF(allocated(this%spectral_solar_scaling))
-
-    !$ACC EXIT DATA DELETE(this%iseed) ASYNC(1) &
-    !$ACC   IF(allocated(this%iseed))
-
-  end subroutine delete_device
-#endif
+  end function out_of_physical_bounds_CPU
 
 end module radiation_single_level

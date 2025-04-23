@@ -41,12 +41,11 @@
 
 module radiation_random_numbers
 
-  use parkind1, only : jprb, jprd, jpim, jpib
+  use parkind1
 
   implicit none
 
-  public :: rng_type, IRngMinstdVector, IRngNative, initialize_acc, &
-    &  uniform_distribution_acc, IMinstdA0, IMinstdA, IMinstdM
+  
 
   enum, bind(c)
     enumerator IRngNative, &    ! Built-in Fortran-90 RNG
@@ -67,25 +66,19 @@ module radiation_random_numbers
   ! found that operations on double-precision reals are faster. Select
   ! which you prefer by defining USE_REAL_RNG_STATE for double
   ! precision, or undefining it for an 8-byte integer.
-#define USE_REAL_RNG_STATE 1
 
-  ! Define RNG_STATE_TYPE based on USE_REAL_RNG_STATE, where jprd
+  ! Define RNG_STATE_TYPE based on 1, where jprd
   ! refers to a double-precision number regardless of the working
   ! precision described by jprb, while jpib describes an 8-byte
   ! integer
-#ifdef USE_REAL_RNG_STATE
-#define RNG_STATE_TYPE real(kind=jprd)
-#else
-#define RNG_STATE_TYPE integer(kind=jpib)
-#endif
 
   ! The constants used in the main random number generator
-  RNG_STATE_TYPE , parameter :: IMinstdA  = 48271
-  RNG_STATE_TYPE , parameter :: IMinstdM  = 2147483647
+  real(kind=jprd) , parameter :: IMinstdA  = 48271
+  real(kind=jprd) , parameter :: IMinstdM  = 2147483647
 
   ! An alternative value of A that can be used to initialize the
   ! members of the state from a single seed
-  RNG_STATE_TYPE , parameter :: IMinstdA0 = 16807
+  real(kind=jprd) , parameter :: IMinstdA0 = 16807
 
   ! Scaling to convert the state to a uniform deviate in the range 0
   ! to 1 in working precision
@@ -99,18 +92,34 @@ module radiation_random_numbers
   type rng_type
 
     integer(kind=jpim) :: itype = IRngNative
-    RNG_STATE_TYPE     :: istate(NMaxStreams)
+    real(kind=jprd)     :: istate(NMaxStreams)
     integer(kind=jpim) :: nmaxstreams = NMaxStreams
     integer(kind=jpim) :: iseed
 
   contains
-    procedure :: initialize
-    procedure :: uniform_distribution_1d, &
-         &       uniform_distribution_2d, &
-         &       uniform_distribution_2d_masked
-    generic   :: uniform_distribution => uniform_distribution_1d, &
-         &                               uniform_distribution_2d, &
-         &                               uniform_distribution_2d_masked
+    
+    
+    
+
+  procedure :: initialize_GPU
+
+  procedure :: uniform_distribution_1d_GPU, &
+         &       uniform_distribution_2d_GPU, &
+         &       uniform_distribution_2d_masked_GPU
+
+  procedure :: initialize_CPU
+
+  procedure :: uniform_distribution_1d_CPU, &
+         &       uniform_distribution_2d_CPU, &
+         &       uniform_distribution_2d_masked_CPU
+
+  generic   :: uniform_distribution_GPU => uniform_distribution_1d_GPU, &
+         &                               uniform_distribution_2d_GPU, &
+         &                               uniform_distribution_2d_masked_GPU
+
+  generic   :: uniform_distribution_CPU => uniform_distribution_1d_CPU, &
+         &                               uniform_distribution_2d_CPU, &
+         &                               uniform_distribution_2d_masked_CPU
 
   end type rng_type
 
@@ -124,7 +133,243 @@ contains
   ! "nmaxstreams" should be provided indicating that random numbers
   ! will be requested in blocks of this length. The generator is
   ! seeded with "iseed".
-  subroutine initialize(this, itype, iseed, nmaxstreams)
+  
+
+  !---------------------------------------------------------------------
+  ! Populate vector "randnum" with pseudo-random numbers; if rannum is
+  ! of length greater than nmaxstreams (specified when the generator
+  ! was initialized) then only the first nmaxstreams elements will be
+  ! assigned.
+  
+
+
+  !---------------------------------------------------------------------
+  ! Populate matrix "randnum" with pseudo-random numbers; if the inner
+  ! dimension of rannum is of length greater than nmaxstreams
+  ! (specified when the generator was initialized) then only the first
+  ! nmaxstreams elements along this dimension will be assigned.
+  
+
+  !---------------------------------------------------------------------
+  ! Populate matrix "randnum" with pseudo-random numbers; if the inner
+  ! dimension of rannum is of length greater than nmaxstreams
+  ! (specified when the generator was initialized) then only the first
+  ! nmaxstreams elements along this dimension will be assigned. This
+  ! version only operates on outer dimensions for which "mask" is true.
+  
+
+  !---------------------------------------------------------------------
+  ! Initialize a random number generator, using the MINSTD
+  ! linear congruential generator (LCG). The generator is
+  ! seeded with "iseed" and "jseed".
+  ! Note that this function is not used but manually inlined as the compiler didnot succed.
+  ! The seperate function stays in the code, so that hopefully, when the
+  ! compiler issue is fixed, it can be used instead of the manual inline.
+  
+
+  !---------------------------------------------------------------------
+  ! Populate vector "randnum" with pseudo-random numbers; if rannum is
+  ! of length greater than nmaxstreams (specified when the generator
+  ! was initialized) then only the first nmaxstreams elements will be
+  ! assigned.
+  
+
+
+  subroutine initialize_GPU(this, itype, iseed, nmaxstreams, lacc)
+
+    class(rng_type), intent(inout) :: this
+    integer(kind=jpim), intent(in), optional :: itype
+    integer(kind=jpim), intent(in), optional :: iseed
+    integer(kind=jpim), intent(in), optional :: nmaxstreams
+
+    integer, allocatable :: iseednative(:)
+    integer :: nseed, jseed, jstr
+    real(jprd) :: rseed
+    logical, intent (in) :: lacc ! Note this must be in double precision
+
+    if (present(itype)) then
+      this%itype = itype
+    else
+      this%itype = IRngNative
+    end if
+
+    if (present(iseed)) then
+      this%iseed = iseed
+    else
+      this%iseed = 1
+    end if
+
+    if (present(nmaxstreams)) then
+      this%nmaxstreams = nmaxstreams
+    else
+      this%nmaxstreams = NMaxStreams
+    end if
+
+    if (this%itype == IRngMinstdVector) then
+      ! ! OPTION 1: Use the C++ minstd_rand0 algorithm to populate the
+      ! ! state: this loop is not vectorizable because the state in
+      ! ! one stream depends on the one in the previous stream.
+      ! this%istate(1) = this%iseed
+      ! do jseed = 2,this%nmaxstreams
+      !   this%istate(jseed) = mod(IMinstdA0 * this%istate(jseed-1), IMinstdM)
+      ! end do
+
+      ! OPTION 2: Use a modified (and vectorized) C++ minstd_rand0 algorithm to
+      ! populate the state
+      rseed = real(abs(this%iseed),jprd)
+      do jstr = 1,this%nmaxstreams
+        ! Note that nint returns an integer of type jpib (8-byte)
+        ! which may be converted to double if that is the type of
+        ! istate
+        this%istate(jstr) = nint(mod(rseed*jstr*(1.0_jprd-0.05_jprd*jstr &
+             &      +0.005_jprd*jstr**2)*IMinstdA0, real(IMinstdM,jprd)),kind=jpib)
+      end do
+
+      ! One warmup of the C++ minstd_rand algorithm
+      do jstr = 1,this%nmaxstreams
+        this%istate(jstr) = mod(IMinstdA * this%istate(jstr), IMinstdM)
+      end do
+
+    else
+      ! Native generator by default
+      call random_seed(size=nseed)
+      allocate(iseednative(nseed))
+      do jseed = 1,nseed
+        iseednative(jseed) = this%iseed + jseed - 1
+      end do
+      call random_seed(put=iseednative)
+      deallocate(iseednative)
+    end if
+
+  end subroutine initialize_GPU
+
+  subroutine uniform_distribution_1d_GPU(this, randnum, lacc)
+
+    class(rng_type), intent(inout) :: this
+    real(kind=jprb), intent(out)   :: randnum(:)
+
+    integer :: imax, i
+    logical, intent (in) :: lacc
+
+    if (this%itype == IRngMinstdVector) then
+
+      imax = min(this%nmaxstreams, size(randnum))
+
+      ! C++ minstd_rand algorithm
+      do i = 1, imax
+        ! The following calculation is computed entirely with 8-byte
+        ! numbers (whether real or integer)
+        this%istate(i) = mod(IMinstdA * this%istate(i), IMinstdM)
+        ! Scale the current state to a number in working precision
+        ! (jprb) between 0 and 1
+        randnum(i) = IMinstdScale * this%istate(i)
+      end do
+
+    else
+
+      call random_number(randnum)
+
+    end if
+
+  end subroutine uniform_distribution_1d_GPU
+
+  subroutine uniform_distribution_2d_GPU(this, randnum, lacc)
+
+    class(rng_type), intent(inout) :: this
+    real(kind=jprb), intent(out)   :: randnum(:,:)
+
+    integer :: imax, jblock, i
+    logical, intent (in) :: lacc
+
+    if (this%itype == IRngMinstdVector) then
+
+      imax = min(this%nmaxstreams, size(randnum,1))
+
+      ! C++ minstd_ran algorithm
+      do jblock = 1,size(randnum,2)
+        ! These lines should be vectorizable
+        do i = 1, imax
+          this%istate(i) = mod(IMinstdA * this%istate(i), IMinstdM)
+          randnum(i,jblock) = IMinstdScale * this%istate(i)
+        end do
+      end do
+
+    else
+
+      call random_number(randnum)
+
+    end if
+
+  end subroutine uniform_distribution_2d_GPU
+
+  subroutine uniform_distribution_2d_masked_GPU(this, randnum, mask, lacc)
+
+    class(rng_type), intent(inout) :: this
+    real(kind=jprb), intent(inout) :: randnum(:,:)
+    logical,         intent(in)    :: mask(:)
+
+    integer :: imax, jblock, i
+    logical, intent (in) :: lacc
+
+    if (this%itype == IRngMinstdVector) then
+
+      imax = min(this%nmaxstreams, size(randnum,1))
+
+      ! C++ minstd_ran algorithm
+      do jblock = 1,size(randnum,2)
+        if (mask(jblock)) then
+          ! These lines should be vectorizable
+          do i = 1, imax
+            this%istate(i) = mod(IMinstdA * this%istate(i), IMinstdM)
+            randnum(i,jblock) = IMinstdScale * this%istate(i)
+          end do
+        end if
+      end do
+
+    else
+
+      do jblock = 1,size(randnum,2)
+        if (mask(jblock)) then
+          call random_number(randnum(:,jblock))
+        end if
+      end do
+
+    end if
+
+  end subroutine uniform_distribution_2d_masked_GPU
+
+  pure function initialize_acc_GPU(iseed, jseed) result(istate)
+
+    integer(kind=jpim), intent(in)      :: iseed
+    integer,            intent(in)      :: jseed
+
+    integer(kind=jpib), intent(out) :: istate
+
+    !$ACC ROUTINE SEQ
+
+    istate = REAL(ABS(iseed),jprb)
+    ! Use a modified (and vectorized) C++ minstd_rand0 algorithm to populate the state
+    istate = nint(mod( istate*jseed*(1._jprb-0.05_jprb*jseed+0.005_jprb*jseed**2)*IMinstdA0, IMinstdM))
+
+    ! One warmup of the C++ minstd_rand algorithm
+    istate = mod(IMinstdA * istate, IMinstdM)
+
+  end function initialize_acc_GPU
+
+  function uniform_distribution_acc_GPU(istate) result(randnum)
+
+    integer(kind=jpib), intent(inout) :: istate
+    real(kind=jprb)   :: randnum
+
+    !$ACC ROUTINE SEQ
+
+    ! C++ minstd_rand algorithm
+    istate = mod(IMinstdA * istate, IMinstdM)
+    randnum = IMinstdScale * istate
+
+  end function uniform_distribution_acc_GPU
+
+  subroutine initialize_CPU(this, itype, iseed, nmaxstreams)
 
     class(rng_type), intent(inout) :: this
     integer(kind=jpim), intent(in), optional :: itype
@@ -189,14 +434,9 @@ contains
       deallocate(iseednative)
     end if
 
-  end subroutine initialize
+  end subroutine initialize_CPU
 
-  !---------------------------------------------------------------------
-  ! Populate vector "randnum" with pseudo-random numbers; if rannum is
-  ! of length greater than nmaxstreams (specified when the generator
-  ! was initialized) then only the first nmaxstreams elements will be
-  ! assigned.
-  subroutine uniform_distribution_1d(this, randnum)
+  subroutine uniform_distribution_1d_CPU(this, randnum)
 
     class(rng_type), intent(inout) :: this
     real(kind=jprb), intent(out)   :: randnum(:)
@@ -223,15 +463,9 @@ contains
 
     end if
 
-  end subroutine uniform_distribution_1d
+  end subroutine uniform_distribution_1d_CPU
 
-
-  !---------------------------------------------------------------------
-  ! Populate matrix "randnum" with pseudo-random numbers; if the inner
-  ! dimension of rannum is of length greater than nmaxstreams
-  ! (specified when the generator was initialized) then only the first
-  ! nmaxstreams elements along this dimension will be assigned.
-  subroutine uniform_distribution_2d(this, randnum)
+  subroutine uniform_distribution_2d_CPU(this, randnum)
 
     class(rng_type), intent(inout) :: this
     real(kind=jprb), intent(out)   :: randnum(:,:)
@@ -257,15 +491,9 @@ contains
 
     end if
 
-  end subroutine uniform_distribution_2d
+  end subroutine uniform_distribution_2d_CPU
 
-  !---------------------------------------------------------------------
-  ! Populate matrix "randnum" with pseudo-random numbers; if the inner
-  ! dimension of rannum is of length greater than nmaxstreams
-  ! (specified when the generator was initialized) then only the first
-  ! nmaxstreams elements along this dimension will be assigned. This
-  ! version only operates on outer dimensions for which "mask" is true.
-  subroutine uniform_distribution_2d_masked(this, randnum, mask)
+  subroutine uniform_distribution_2d_masked_CPU(this, randnum, mask)
 
     class(rng_type), intent(inout) :: this
     real(kind=jprb), intent(inout) :: randnum(:,:)
@@ -298,23 +526,16 @@ contains
 
     end if
 
-  end subroutine uniform_distribution_2d_masked
+  end subroutine uniform_distribution_2d_masked_CPU
 
-  !---------------------------------------------------------------------
-  ! Initialize a random number generator, using the MINSTD
-  ! linear congruential generator (LCG). The generator is
-  ! seeded with "iseed" and "jseed".
-  ! Note that this function is not used but manually inlined as the compiler didnot succed.
-  ! The seperate function stays in the code, so that hopefully, when the
-  ! compiler issue is fixed, it can be used instead of the manual inline.
-  pure function initialize_acc(iseed, jseed) result(istate)
+  pure function initialize_acc_CPU(iseed, jseed) result(istate)
 
     integer(kind=jpim), intent(in)      :: iseed
     integer,            intent(in)      :: jseed
 
     integer(kind=jpib), intent(out) :: istate
 
-    !$ACC ROUTINE SEQ
+    
 
     istate = REAL(ABS(iseed),jprb)
     ! Use a modified (and vectorized) C++ minstd_rand0 algorithm to populate the state
@@ -323,25 +544,19 @@ contains
     ! One warmup of the C++ minstd_rand algorithm
     istate = mod(IMinstdA * istate, IMinstdM)
 
-  end function initialize_acc
+  end function initialize_acc_CPU
 
-  !---------------------------------------------------------------------
-  ! Populate vector "randnum" with pseudo-random numbers; if rannum is
-  ! of length greater than nmaxstreams (specified when the generator
-  ! was initialized) then only the first nmaxstreams elements will be
-  ! assigned.
-  function uniform_distribution_acc(istate) result(randnum)
+  function uniform_distribution_acc_CPU(istate) result(randnum)
 
     integer(kind=jpib), intent(inout) :: istate
     real(kind=jprb)   :: randnum
 
-    !$ACC ROUTINE SEQ
+    
 
     ! C++ minstd_rand algorithm
     istate = mod(IMinstdA * istate, IMinstdM)
     randnum = IMinstdScale * istate
 
-  end function uniform_distribution_acc
-
+  end function uniform_distribution_acc_CPU
 
 end module radiation_random_numbers

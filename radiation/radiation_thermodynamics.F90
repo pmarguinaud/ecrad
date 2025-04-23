@@ -19,10 +19,10 @@
 
 module radiation_thermodynamics
 
-  use parkind1, only : jprb
+  use parkind1
 
   implicit none
-  public
+  
 
   !---------------------------------------------------------------------
   ! Derived type for storing pressure and temperature at half and full levels
@@ -51,18 +51,48 @@ module radiation_thermodynamics
      logical :: &
           &  rrtm_pass_temppres_fl
    contains
-     procedure :: allocate   => allocate_thermodynamics_arrays
-     procedure :: deallocate => deallocate_thermodynamics_arrays
-     procedure :: calc_saturation_wrt_liquid
-     procedure :: get_layer_mass
-     procedure :: get_layer_mass_column
-     procedure :: out_of_physical_bounds
-#ifdef _OPENACC
-    procedure :: create_device
-    procedure :: update_host
-    procedure :: update_device
-    procedure :: delete_device
-#endif
+     
+     
+     
+     
+     
+     
+    
+    
+    
+    
+
+  procedure :: allocate_GPU   => allocate_thermodynamics_arrays_GPU
+
+  procedure :: deallocate_GPU => deallocate_thermodynamics_arrays_GPU
+
+  procedure :: calc_saturation_wrt_liquid_GPU
+
+  procedure :: get_layer_mass_GPU
+
+  procedure :: get_layer_mass_column_GPU
+
+  procedure :: out_of_physical_bounds_GPU
+
+  procedure :: create_device_GPU
+
+  procedure :: update_host_GPU
+
+  procedure :: update_device_GPU
+
+  procedure :: delete_device_GPU
+
+  procedure :: allocate_CPU   => allocate_thermodynamics_arrays_CPU
+
+  procedure :: deallocate_CPU => deallocate_thermodynamics_arrays_CPU
+
+  procedure :: calc_saturation_wrt_liquid_CPU
+
+  procedure :: get_layer_mass_CPU
+
+  procedure :: get_layer_mass_column_CPU
+
+  procedure :: out_of_physical_bounds_CPU
 
   end type thermodynamics_type
 
@@ -71,10 +101,65 @@ contains
 
   !---------------------------------------------------------------------
   ! Allocate variables with specified dimensions
-  subroutine allocate_thermodynamics_arrays(this, ncol, nlev, &
-       &                                    use_h2o_sat, rrtm_pass_temppres_fl)
+  
 
-    use yomhook,  only : lhook, dr_hook, jphook
+
+  !---------------------------------------------------------------------
+  ! Deallocate variables
+  
+
+
+  !---------------------------------------------------------------------
+  ! Calculate approximate saturation with respect to liquid
+  
+
+
+  !---------------------------------------------------------------------
+  ! Calculate the dry mass of each layer, neglecting humidity effects.
+  ! The first version is for all columns.
+  
+
+  !---------------------------------------------------------------------
+  ! Calculate the dry mass of each layer, neglecting humidity effects.
+  ! The second version is for one column, the one numbered "icol".
+  
+
+
+  !---------------------------------------------------------------------
+  ! Estimate the separation between the mid-points of model layers
+  ! given the half-level pressure and temperature.  This is not in
+  ! terms of the "thermodynamics" type as it is useful for computing
+  ! overlap decorrelation lengths and hence cloud cover outside the
+  ! radiation scheme.
+  
+
+
+  !---------------------------------------------------------------------
+  ! Return .true. if variables are out of a physically sensible range,
+  ! optionally only considering columns between istartcol and iendcol
+  
+
+
+  !---------------------------------------------------------------------
+  ! Creates fields on device
+  
+
+  !---------------------------------------------------------------------
+  ! updates fields on host
+  
+
+  !---------------------------------------------------------------------
+  ! updates fields on device
+  
+
+  !---------------------------------------------------------------------
+  ! Deletes fields on device
+  
+
+  subroutine allocate_thermodynamics_arrays_GPU(this, ncol, nlev, &
+       &                                    use_h2o_sat, rrtm_pass_temppres_fl, lacc)
+
+    use yomhook
 
     class(thermodynamics_type), intent(inout) :: this
     integer, intent(in)           :: ncol  ! Number of columns
@@ -86,6 +171,7 @@ contains
     logical :: use_h2o_sat_local
 
     real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
 
     if (lhook) call dr_hook('radiation_thermodynamics:allocate',0,hook_handle)
 
@@ -113,18 +199,16 @@ contains
 
     if (lhook) call dr_hook('radiation_thermodynamics:allocate',1,hook_handle)
 
-  end subroutine allocate_thermodynamics_arrays
+  end subroutine allocate_thermodynamics_arrays_GPU
 
+  subroutine deallocate_thermodynamics_arrays_GPU(this, lacc)
 
-  !---------------------------------------------------------------------
-  ! Deallocate variables
-  subroutine deallocate_thermodynamics_arrays(this)
-
-    use yomhook,  only : lhook, dr_hook, jphook
+    use yomhook
 
     class(thermodynamics_type), intent(inout) :: this
 
     real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
 
     if (lhook) call dr_hook('radiation_thermodynamics:deallocate',0,hook_handle)
 
@@ -146,14 +230,11 @@ contains
 
     if (lhook) call dr_hook('radiation_thermodynamics:deallocate',1,hook_handle)
 
-  end subroutine deallocate_thermodynamics_arrays
+  end subroutine deallocate_thermodynamics_arrays_GPU
 
+  subroutine calc_saturation_wrt_liquid_GPU(this,istartcol,iendcol, lacc)
 
-  !---------------------------------------------------------------------
-  ! Calculate approximate saturation with respect to liquid
-  subroutine calc_saturation_wrt_liquid(this,istartcol,iendcol, lacc)
-
-    use yomhook,  only : lhook, dr_hook, jphook
+    use yomhook
 
     class(thermodynamics_type), intent(inout) :: this
     integer, intent(in)                       :: istartcol, iendcol
@@ -204,16 +285,392 @@ contains
 
     if (lhook) call dr_hook('radiation_thermodynamics:calc_saturation_wrt_liquid',1,hook_handle)
 
-  end subroutine calc_saturation_wrt_liquid
+  end subroutine calc_saturation_wrt_liquid_GPU
 
+  subroutine get_layer_mass_GPU(this,istartcol,iendcol,layer_mass, lacc)
 
-  !---------------------------------------------------------------------
-  ! Calculate the dry mass of each layer, neglecting humidity effects.
-  ! The first version is for all columns.
-  subroutine get_layer_mass(this,istartcol,iendcol,layer_mass)
+    use yomhook
+    use radiation_constants
 
-    use yomhook,              only : lhook, dr_hook, jphook
-    use radiation_constants,  only : AccelDueToGravity
+    class(thermodynamics_type), intent(in)  :: this
+    integer,                    intent(in)  :: istartcol, iendcol
+    real(jprb),                 intent(out) :: layer_mass(:,:)
+
+    integer    :: nlev, jl, jk
+    real(jprb) :: inv_g
+
+    real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
+
+    if (lhook) call dr_hook('radiation_thermodynamics:get_layer_mass',0,hook_handle)
+
+    nlev  = ubound(this%pressure_hl,2) - 1
+    inv_g = 1.0_jprb / AccelDueToGravity
+
+    !$ACC PARALLEL DEFAULT(PRESENT) ASYNC(1) IF(lacc)
+    !$ACC LOOP GANG VECTOR COLLAPSE(2)
+    DO jl=istartcol, iendcol
+      DO jk=1, nlev
+        layer_mass(jl,jk) &
+            &  = ( this%pressure_hl(jl,jk+1) &
+            &     -this%pressure_hl(jl,jk  )  ) &
+         &  * inv_g
+      END DO
+    END DO
+    !$ACC END PARALLEL
+
+    if (lhook) call dr_hook('radiation_thermodynamics:get_layer_mass',1,hook_handle)
+
+  end subroutine get_layer_mass_GPU
+
+  subroutine get_layer_mass_column_GPU(this, icol, layer_mass, lacc)
+
+    use yomhook
+    use radiation_constants
+
+    class(thermodynamics_type), intent(in)  :: this
+    integer,                    intent(in)  :: icol
+    real(jprb),                 intent(out) :: layer_mass(:)
+
+    integer    :: nlev
+    real(jprb) :: inv_g
+
+    real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
+
+    if (lhook) call dr_hook('radiation_thermodynamics:get_layer_mass_column',0,hook_handle)
+
+    nlev  = ubound(this%pressure_hl,2) - 1
+    inv_g = 1.0_jprb / AccelDueToGravity
+
+    layer_mass = ( this%pressure_hl(icol,2:nlev+1) &
+             &    -this%pressure_hl(icol,1:nlev  )  ) &
+             &   * inv_g
+
+    if (lhook) call dr_hook('radiation_thermodynamics:get_layer_mass_column',1,hook_handle)
+
+  end subroutine get_layer_mass_column_GPU
+
+  subroutine get_layer_separation_GPU(pressure_hl, temperature_hl, layer_separation, lacc)
+
+    use yomhook
+    use radiation_constants
+
+    ! Pressure (Pa) and temperature (K) at half-levels, dimensioned
+    ! (ncol,nlev+1) where ncol is the number of columns and nlev is
+    ! the number of model levels
+    real(jprb), dimension(:,:), intent(in)  :: pressure_hl, temperature_hl
+
+    ! Layer separation in metres, dimensioned (ncol,nlev-1)
+    real(jprb), dimension(:,:), intent(out) :: layer_separation
+
+    ! Ratio of gas constant for dry air to acceleration due to gravity
+    real(jprb), parameter :: R_over_g = GasConstantDryAir / AccelDueToGravity
+
+    ! Loop indices and array bounds
+    integer    :: jlev
+    integer    :: i1, i2, nlev
+
+    real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
+
+    if (lhook) call dr_hook('radiation_thermodynamics:get_layer_separation',0,hook_handle)
+
+    i1   = lbound(pressure_hl,1)
+    i2   = ubound(pressure_hl,1)
+    nlev =   size(pressure_hl,2)-1
+
+    if (pressure_hl(i1,2) > pressure_hl(i1,1)) then
+      ! Pressure is increasing with index (order of layers is
+      ! top-of-atmosphere to surface). In case pressure_hl(:,1)=0, we
+      ! don't take the logarithm of the first pressure in each column.
+      layer_separation(i1:i2,1) = R_over_g * temperature_hl(i1:i2,2) &
+           &                    * log(pressure_hl(i1:i2,3)/pressure_hl(i1:i2,2))
+
+      ! For other layers we take the separation between midpoints to
+      ! be half the separation between the half-levels at the edge of
+      ! the two adjacent layers
+      do jlev = 2,nlev-1
+        layer_separation(i1:i2,jlev) = (0.5_jprb * R_over_g) * temperature_hl(i1:i2,jlev+1) &
+             &                    * log(pressure_hl(i1:i2,jlev+2)/pressure_hl(i1:i2,jlev))
+
+      end do
+
+    else
+      ! Pressure is decreasing with index (order of layers is surface
+      ! to top-of-atmosphere).  In case pressure_hl(:,nlev+1)=0, we
+      ! don't take the logarithm of the last pressure in each column.
+
+      do jlev = 1,nlev-2
+        layer_separation(i1:i2,jlev) = (0.5_jprb * R_over_g) * temperature_hl(i1:i2,jlev+1) &
+             &                    * log(pressure_hl(i1:i2,jlev)/pressure_hl(i1:i2,jlev+2))
+
+      end do
+      layer_separation(i1:i2,nlev-1) = R_over_g * temperature_hl(i1:i2,nlev) &
+           &                    * log(pressure_hl(i1:i2,nlev-1)/pressure_hl(i1:i2,nlev))
+
+    end if
+
+    if (lhook) call dr_hook('radiation_thermodynamics:get_layer_separation',1,hook_handle)
+
+  end subroutine get_layer_separation_GPU
+
+  function out_of_physical_bounds_GPU(this, istartcol, iendcol, do_fix, lacc) result(is_bad)
+
+    use yomhook
+    use radiation_check
+
+    class(thermodynamics_type), intent(inout) :: this
+    integer,           optional,intent(in) :: istartcol, iendcol
+    logical,           optional,intent(in) :: do_fix
+    logical                                :: is_bad
+
+    logical    :: do_fix_local
+
+    real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
+
+    if (lhook) call dr_hook('radiation_thermodynamics:out_of_physical_bounds',0,hook_handle)
+
+    if (present(do_fix)) then
+      do_fix_local = do_fix
+    else
+      do_fix_local = .false.
+    end if
+
+    ! Dangerous to cap pressure_hl as then the pressure difference across a layer could be zero
+    is_bad =    out_of_bounds_2d(this%pressure_hl, 'pressure_hl', 0.0_jprb, 110000.0_jprb, &
+         &                       .false., i1=istartcol, i2=iendcol) &
+         & .or. out_of_bounds_2d(this%temperature_hl, 'temperature_hl', 100.0_jprb,  400.0_jprb, &
+         &                       do_fix_local, i1=istartcol, i2=iendcol) &
+         & .or. out_of_bounds_2d(this%h2o_sat_liq, 'h2o_sat_liq', 0.0_jprb, 1.0_jprb, &
+         &                       do_fix_local, i1=istartcol, i2=iendcol)
+
+    if (lhook) call dr_hook('radiation_thermodynamics:out_of_physical_bounds',1,hook_handle)
+
+  end function out_of_physical_bounds_GPU
+
+  subroutine create_device_GPU(this, lacc)
+
+    class(thermodynamics_type), intent(inout) :: this
+    logical, intent (in) :: lacc
+
+    !$ACC ENTER DATA CREATE(this%pressure_hl) ASYNC(1) &
+    !$ACC   IF((allocated(this%pressure_hl)) .AND. lacc)
+
+    !$ACC ENTER DATA CREATE(this%temperature_hl) ASYNC(1) &
+    !$ACC   IF((allocated(this%temperature_hl)) .AND. lacc)
+
+    !$ACC ENTER DATA CREATE(this%pressure_fl) ASYNC(1) &
+    !$ACC   IF((allocated(this%pressure_fl)) .AND. lacc)
+
+    !$ACC ENTER DATA CREATE(this%temperature_fl) ASYNC(1) &
+    !$ACC   IF((allocated(this%temperature_fl)) .AND. lacc)
+
+    !$ACC ENTER DATA CREATE(this%h2o_sat_liq) ASYNC(1) &
+    !$ACC   IF((allocated(this%h2o_sat_liq)) .AND. lacc)
+
+  end subroutine create_device_GPU
+
+  subroutine update_host_GPU(this, lacc)
+
+    class(thermodynamics_type), intent(inout) :: this
+    logical, intent (in) :: lacc
+
+    !$ACC UPDATE HOST(this%pressure_hl) &
+    !$ACC   IF((allocated(this%pressure_hl)) .AND. lacc)
+
+    !$ACC UPDATE HOST(this%temperature_hl) ASYNC(1) &
+    !$ACC   IF((allocated(this%temperature_hl)) .AND. lacc)
+
+    !$ACC UPDATE HOST(this%pressure_fl) ASYNC(1) &
+    !$ACC   IF((allocated(this%pressure_fl)) .AND. lacc)
+
+    !$ACC UPDATE HOST(this%temperature_fl) ASYNC(1) &
+    !$ACC   IF((allocated(this%temperature_fl)) .AND. lacc)
+
+    !$ACC UPDATE HOST(this%h2o_sat_liq) ASYNC(1) &
+    !$ACC   IF((allocated(this%h2o_sat_liq)) .AND. lacc)
+
+  end subroutine update_host_GPU
+
+  subroutine update_device_GPU(this, lacc)
+
+    class(thermodynamics_type), intent(inout) :: this
+    logical, intent (in) :: lacc
+
+    !$ACC UPDATE DEVICE(this%pressure_hl) ASYNC(1) &
+    !$ACC   IF((allocated(this%pressure_hl)) .AND. lacc)
+
+    !$ACC UPDATE DEVICE(this%temperature_hl) ASYNC(1) &
+    !$ACC   IF((allocated(this%temperature_hl)) .AND. lacc)
+
+    !$ACC UPDATE DEVICE(this%pressure_fl) ASYNC(1) &
+    !$ACC   IF((allocated(this%pressure_fl)) .AND. lacc)
+
+    !$ACC UPDATE DEVICE(this%temperature_fl) ASYNC(1) &
+    !$ACC   IF((allocated(this%temperature_fl)) .AND. lacc)
+
+    !$ACC UPDATE DEVICE(this%h2o_sat_liq) ASYNC(1) &
+    !$ACC   IF((allocated(this%h2o_sat_liq)) .AND. lacc)
+
+  end subroutine update_device_GPU
+
+  subroutine delete_device_GPU(this, lacc)
+
+    class(thermodynamics_type), intent(inout) :: this
+    logical, intent (in) :: lacc
+
+    !$ACC EXIT DATA DELETE(this%pressure_hl) ASYNC(1) &
+    !$ACC   IF((allocated(this%pressure_hl)) .AND. lacc)
+
+    !$ACC EXIT DATA DELETE(this%temperature_hl) ASYNC(1) &
+    !$ACC   IF((allocated(this%temperature_hl)) .AND. lacc)
+
+    !$ACC EXIT DATA DELETE(this%pressure_fl) ASYNC(1) &
+    !$ACC   IF((allocated(this%pressure_fl)) .AND. lacc)
+
+    !$ACC EXIT DATA DELETE(this%temperature_fl) ASYNC(1) &
+    !$ACC   IF((allocated(this%temperature_fl)) .AND. lacc)
+
+    !$ACC EXIT DATA DELETE(this%h2o_sat_liq) ASYNC(1) &
+    !$ACC   IF((allocated(this%h2o_sat_liq)) .AND. lacc)
+
+  end subroutine delete_device_GPU
+
+  subroutine allocate_thermodynamics_arrays_CPU(this, ncol, nlev, &
+       &                                    use_h2o_sat, rrtm_pass_temppres_fl)
+
+    use yomhook
+
+    class(thermodynamics_type), intent(inout) :: this
+    integer, intent(in)           :: ncol  ! Number of columns
+    integer, intent(in)           :: nlev  ! Number of levels
+    logical, intent(in), optional :: use_h2o_sat ! Allocate h2o_sat_liq?
+    logical, intent(in), optional :: rrtm_pass_temppres_fl ! Directly pass temperature
+                                                           ! and pressure on full levels
+
+    logical :: use_h2o_sat_local
+
+    real(jphook) :: hook_handle
+
+    if (lhook) call dr_hook('radiation_thermodynamics:allocate',0,hook_handle)
+
+    allocate(this%pressure_hl(ncol,nlev+1))
+    allocate(this%temperature_hl(ncol,nlev+1))
+
+    use_h2o_sat_local = .false.
+    if (present(use_h2o_sat)) then
+      use_h2o_sat_local = use_h2o_sat
+    end if
+
+    this%rrtm_pass_temppres_fl = .false.
+    if (present(rrtm_pass_temppres_fl)) then
+      this%rrtm_pass_temppres_fl = rrtm_pass_temppres_fl
+    end if
+
+    if (this%rrtm_pass_temppres_fl) then
+      allocate(this%pressure_fl(ncol,nlev))
+      allocate(this%temperature_fl(ncol,nlev))
+    end if
+
+    if (use_h2o_sat_local) then
+      allocate(this%h2o_sat_liq(ncol,nlev))
+    end if
+
+    if (lhook) call dr_hook('radiation_thermodynamics:allocate',1,hook_handle)
+
+  end subroutine allocate_thermodynamics_arrays_CPU
+
+  subroutine deallocate_thermodynamics_arrays_CPU(this)
+
+    use yomhook
+
+    class(thermodynamics_type), intent(inout) :: this
+
+    real(jphook) :: hook_handle
+
+    if (lhook) call dr_hook('radiation_thermodynamics:deallocate',0,hook_handle)
+
+    if (allocated(this%pressure_hl)) then
+      deallocate(this%pressure_hl)
+    end if
+    if (allocated(this%temperature_hl)) then
+      deallocate(this%temperature_hl)
+    end if
+    if (allocated(this%pressure_fl)) then
+      deallocate(this%pressure_fl)
+    end if
+    if (allocated(this%temperature_fl)) then
+      deallocate(this%temperature_fl)
+    end if
+    if (allocated(this%h2o_sat_liq)) then
+      deallocate(this%h2o_sat_liq)
+    end if
+
+    if (lhook) call dr_hook('radiation_thermodynamics:deallocate',1,hook_handle)
+
+  end subroutine deallocate_thermodynamics_arrays_CPU
+
+  subroutine calc_saturation_wrt_liquid_CPU(this,istartcol,iendcol, lacc)
+
+    use yomhook
+
+    class(thermodynamics_type), intent(inout) :: this
+    integer, intent(in)                       :: istartcol, iendcol
+    logical, optional, intent(in)             :: lacc
+
+    logical :: llacc
+
+    ! Pressure and temperature at full levels
+    real(jprb) :: pressure, temperature
+
+    ! Vapour pressure (Pa)
+    real(jprb) :: e_sat
+
+    integer :: ncol, nlev ! Dimension sizes
+    integer :: jcol, jlev ! Loop indices for column and level
+
+    real(jphook) :: hook_handle
+
+    if (lhook) call dr_hook('radiation_thermodynamics:calc_saturation_wrt_liquid',0,hook_handle)
+
+    if (present(lacc)) then
+        llacc = lacc
+    else
+        llacc = .false.
+    endif
+
+    ncol = size(this%pressure_hl,1)
+    nlev = size(this%pressure_hl,2) - 1
+
+    if (.not. allocated(this%h2o_sat_liq)) then
+      ! only required in non blocked mode
+      allocate(this%h2o_sat_liq(ncol,nlev))
+    endif
+
+    
+    
+    do jlev = 1,nlev
+       do jcol = istartcol,iendcol
+          pressure = 0.5 * (this%pressure_hl(jcol,jlev)+this%pressure_hl(jcol,jlev+1))
+          temperature = 0.5 * (this%temperature_hl(jcol,jlev)+this%temperature_hl(jcol,jlev+1))
+          e_sat = 6.11e2_jprb * exp( 17.269_jprb * (temperature-273.16_jprb) / (temperature-35.86_jprb) )
+          ! This formula can go above 1 at low pressure so needs to be
+          ! capped
+          this%h2o_sat_liq(jcol,jlev) = min(1.0_jprb, 0.622_jprb * e_sat / pressure)
+       end do
+    end do
+    
+
+    if (lhook) call dr_hook('radiation_thermodynamics:calc_saturation_wrt_liquid',1,hook_handle)
+
+  end subroutine calc_saturation_wrt_liquid_CPU
+
+  subroutine get_layer_mass_CPU(this,istartcol,iendcol,layer_mass)
+
+    use yomhook
+    use radiation_constants
 
     class(thermodynamics_type), intent(in)  :: this
     integer,                    intent(in)  :: istartcol, iendcol
@@ -229,8 +686,8 @@ contains
     nlev  = ubound(this%pressure_hl,2) - 1
     inv_g = 1.0_jprb / AccelDueToGravity
 
-    !$ACC PARALLEL DEFAULT(PRESENT) ASYNC(1)
-    !$ACC LOOP GANG VECTOR COLLAPSE(2)
+    
+    
     DO jl=istartcol, iendcol
       DO jk=1, nlev
         layer_mass(jl,jk) &
@@ -239,19 +696,16 @@ contains
          &  * inv_g
       END DO
     END DO
-    !$ACC END PARALLEL
+    
 
     if (lhook) call dr_hook('radiation_thermodynamics:get_layer_mass',1,hook_handle)
 
-  end subroutine get_layer_mass
+  end subroutine get_layer_mass_CPU
 
-  !---------------------------------------------------------------------
-  ! Calculate the dry mass of each layer, neglecting humidity effects.
-  ! The second version is for one column, the one numbered "icol".
-  subroutine get_layer_mass_column(this, icol, layer_mass)
+  subroutine get_layer_mass_column_CPU(this, icol, layer_mass)
 
-    use yomhook,              only : lhook, dr_hook, jphook
-    use radiation_constants,  only : AccelDueToGravity
+    use yomhook
+    use radiation_constants
 
     class(thermodynamics_type), intent(in)  :: this
     integer,                    intent(in)  :: icol
@@ -273,19 +727,12 @@ contains
 
     if (lhook) call dr_hook('radiation_thermodynamics:get_layer_mass_column',1,hook_handle)
 
-  end subroutine get_layer_mass_column
+  end subroutine get_layer_mass_column_CPU
 
+  subroutine get_layer_separation_CPU(pressure_hl, temperature_hl, layer_separation)
 
-  !---------------------------------------------------------------------
-  ! Estimate the separation between the mid-points of model layers
-  ! given the half-level pressure and temperature.  This is not in
-  ! terms of the "thermodynamics" type as it is useful for computing
-  ! overlap decorrelation lengths and hence cloud cover outside the
-  ! radiation scheme.
-  subroutine get_layer_separation(pressure_hl, temperature_hl, layer_separation)
-
-    use yomhook,              only : lhook, dr_hook, jphook
-    use radiation_constants,  only : GasConstantDryAir, AccelDueToGravity
+    use yomhook
+    use radiation_constants
 
     ! Pressure (Pa) and temperature (K) at half-levels, dimensioned
     ! (ncol,nlev+1) where ncol is the number of columns and nlev is
@@ -343,16 +790,12 @@ contains
 
     if (lhook) call dr_hook('radiation_thermodynamics:get_layer_separation',1,hook_handle)
 
-  end subroutine get_layer_separation
+  end subroutine get_layer_separation_CPU
 
+  function out_of_physical_bounds_CPU(this, istartcol, iendcol, do_fix) result(is_bad)
 
-  !---------------------------------------------------------------------
-  ! Return .true. if variables are out of a physically sensible range,
-  ! optionally only considering columns between istartcol and iendcol
-  function out_of_physical_bounds(this, istartcol, iendcol, do_fix) result(is_bad)
-
-    use yomhook,          only : lhook, dr_hook, jphook
-    use radiation_check,  only : out_of_bounds_2d
+    use yomhook
+    use radiation_check
 
     class(thermodynamics_type), intent(inout) :: this
     integer,           optional,intent(in) :: istartcol, iendcol
@@ -381,101 +824,6 @@ contains
 
     if (lhook) call dr_hook('radiation_thermodynamics:out_of_physical_bounds',1,hook_handle)
 
-  end function out_of_physical_bounds
-
-#ifdef _OPENACC
-
-  !---------------------------------------------------------------------
-  ! Creates fields on device
-  subroutine create_device(this)
-
-    class(thermodynamics_type), intent(inout) :: this
-
-    !$ACC ENTER DATA CREATE(this%pressure_hl) ASYNC(1) &
-    !$ACC   IF(allocated(this%pressure_hl))
-
-    !$ACC ENTER DATA CREATE(this%temperature_hl) ASYNC(1) &
-    !$ACC   IF(allocated(this%temperature_hl))
-
-    !$ACC ENTER DATA CREATE(this%pressure_fl) ASYNC(1) &
-    !$ACC   IF(allocated(this%pressure_fl))
-
-    !$ACC ENTER DATA CREATE(this%temperature_fl) ASYNC(1) &
-    !$ACC   IF(allocated(this%temperature_fl))
-
-    !$ACC ENTER DATA CREATE(this%h2o_sat_liq) ASYNC(1) &
-    !$ACC   IF(allocated(this%h2o_sat_liq))
-
-  end subroutine create_device
-
-  !---------------------------------------------------------------------
-  ! updates fields on host
-  subroutine update_host(this)
-
-    class(thermodynamics_type), intent(inout) :: this
-
-    !$ACC UPDATE HOST(this%pressure_hl) &
-    !$ACC   IF(allocated(this%pressure_hl))
-
-    !$ACC UPDATE HOST(this%temperature_hl) ASYNC(1) &
-    !$ACC   IF(allocated(this%temperature_hl))
-
-    !$ACC UPDATE HOST(this%pressure_fl) ASYNC(1) &
-    !$ACC   IF(allocated(this%pressure_fl))
-
-    !$ACC UPDATE HOST(this%temperature_fl) ASYNC(1) &
-    !$ACC   IF(allocated(this%temperature_fl))
-
-    !$ACC UPDATE HOST(this%h2o_sat_liq) ASYNC(1) &
-    !$ACC   IF(allocated(this%h2o_sat_liq))
-
-  end subroutine update_host
-
-  !---------------------------------------------------------------------
-  ! updates fields on device
-  subroutine update_device(this)
-
-    class(thermodynamics_type), intent(inout) :: this
-
-    !$ACC UPDATE DEVICE(this%pressure_hl) ASYNC(1) &
-    !$ACC   IF(allocated(this%pressure_hl))
-
-    !$ACC UPDATE DEVICE(this%temperature_hl) ASYNC(1) &
-    !$ACC   IF(allocated(this%temperature_hl))
-
-    !$ACC UPDATE DEVICE(this%pressure_fl) ASYNC(1) &
-    !$ACC   IF(allocated(this%pressure_fl))
-
-    !$ACC UPDATE DEVICE(this%temperature_fl) ASYNC(1) &
-    !$ACC   IF(allocated(this%temperature_fl))
-
-    !$ACC UPDATE DEVICE(this%h2o_sat_liq) ASYNC(1) &
-    !$ACC   IF(allocated(this%h2o_sat_liq))
-
-  end subroutine update_device
-
-  !---------------------------------------------------------------------
-  ! Deletes fields on device
-  subroutine delete_device(this)
-
-    class(thermodynamics_type), intent(inout) :: this
-
-    !$ACC EXIT DATA DELETE(this%pressure_hl) ASYNC(1) &
-    !$ACC   IF(allocated(this%pressure_hl))
-
-    !$ACC EXIT DATA DELETE(this%temperature_hl) ASYNC(1) &
-    !$ACC   IF(allocated(this%temperature_hl))
-
-    !$ACC EXIT DATA DELETE(this%pressure_fl) ASYNC(1) &
-    !$ACC   IF(allocated(this%pressure_fl))
-
-    !$ACC EXIT DATA DELETE(this%temperature_fl) ASYNC(1) &
-    !$ACC   IF(allocated(this%temperature_fl))
-
-    !$ACC EXIT DATA DELETE(this%h2o_sat_liq) ASYNC(1) &
-    !$ACC   IF(allocated(this%h2o_sat_liq))
-
-  end subroutine delete_device
-#endif
+  end function out_of_physical_bounds_CPU
 
 end module radiation_thermodynamics

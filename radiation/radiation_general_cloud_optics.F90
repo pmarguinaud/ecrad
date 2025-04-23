@@ -18,7 +18,7 @@ module radiation_general_cloud_optics
 
   implicit none
 
-  public
+  
   
 contains
 
@@ -29,15 +29,320 @@ contains
   !---------------------------------------------------------------------
   ! Load cloud scattering data; this subroutine delegates to one
   ! in radiation_general_cloud_optics_data.F90
-  subroutine setup_general_cloud_optics(config)
+  
 
-    use parkind1,         only : jprb
-    use yomhook,          only : lhook, dr_hook, jphook
+  !---------------------------------------------------------------------
+  ! Compute cloud optical properties
+  
 
-    use radiation_io,     only : nulout
-    use radiation_config, only : config_type, NMaxCloudTypes
-    use radiation_spectral_definition, only : SolarReferenceTemperature, &
-         &                                    TerrestrialReferenceTemperature
+
+  !---------------------------------------------------------------------
+  ! Save all the cloud optics look-up tables for sw/lw and for each
+  ! hydrometeor type
+  
+
+  subroutine setup_general_cloud_optics_GPU(config, lacc)
+
+    use parkind1
+    use yomhook
+
+    use radiation_io
+    use radiation_config
+    use radiation_spectral_definition
+
+    type(config_type), intent(inout) :: config
+
+    character(len=511) :: file_name
+
+    integer :: jtype ! loop index
+    integer :: strlen
+
+    real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
+
+    if (lhook) call dr_hook('radiation_general_cloud_optics:setup_general_cloud_optics',0,hook_handle)
+
+    ! Count number of cloud types
+    config%n_cloud_types = 0
+    do jtype = 1,NMaxCloudTypes
+      if (len_trim(config%cloud_type_name(jtype)) > 0) then
+        config%n_cloud_types = jtype
+      else
+        exit
+      end if
+    end do
+
+    ! If cloud_type_name has not been provided then assume liquid,ice
+    ! noting that the default spectral averaging (defined in
+    ! radiation_config.F90) is "thick"
+    if (config%n_cloud_types == 0) then
+      config%cloud_type_name(1) = "mie_droplet"
+      config%cloud_type_name(2) = "baum-general-habit-mixture_ice"
+      ! Optionally override spectral averaging method
+      !config%use_thick_cloud_spectral_averaging(1) = .false.
+      !config%use_thick_cloud_spectral_averaging(2) = .false.
+      config%n_cloud_types = 2
+    end if
+
+    ! Allocate structures
+    if (config%do_sw) then
+      allocate(config%cloud_optics_sw(config%n_cloud_types))
+    end if
+
+    if (config%do_lw) then
+      allocate(config%cloud_optics_lw(config%n_cloud_types))
+    end if
+
+    ! Load cloud optics data
+    do jtype = 1,config%n_cloud_types
+      if (config%cloud_type_name(jtype)(1:1) == '/') then
+        file_name = trim(config%cloud_type_name(jtype))
+      else
+        strlen = len_trim(config%cloud_type_name(jtype))
+        if (config%cloud_type_name(jtype)(strlen-2:strlen) == ".nc") then
+          file_name = trim(config%directory_name) &
+               &  // '/' // trim(config%cloud_type_name(jtype))
+        else
+          file_name = trim(config%directory_name) &
+               &  // '/' // trim(config%cloud_type_name(jtype)) &
+               &  // '_scattering.nc'
+        end if
+      end if
+
+      if (config%do_sw) then
+        if (config%iverbosesetup >= 2) then
+          write(nulout,'(a,i0,a)') 'Shortwave cloud type ', jtype, ':'
+        end if
+        call config%cloud_optics_sw(jtype)%setup_GPU(file_name, &
+             &  config%gas_optics_sw%spectral_def, &
+             &  use_bands=(.not. config%do_cloud_aerosol_per_sw_g_point), &
+             &  use_thick_averaging=config%use_thick_cloud_spectral_averaging(jtype), &
+             &  weighting_temperature=SolarReferenceTemperature, &
+             &  iverbose=config%iverbosesetup, lacc=lacc)
+        config%cloud_optics_sw(jtype)%type_name = trim(config%cloud_type_name(jtype))
+      end if
+
+      if (config%do_lw) then
+        if (config%iverbosesetup >= 2) then
+          write(nulout,'(a,i0,a)') 'Longwave cloud type ', jtype, ':'
+        end if
+        call config%cloud_optics_lw(jtype)%setup_GPU(file_name, &
+             &  config%gas_optics_lw%spectral_def, &
+             &  use_bands=(.not. config%do_cloud_aerosol_per_lw_g_point), &
+             &  use_thick_averaging=config%use_thick_cloud_spectral_averaging(jtype), &
+             &  weighting_temperature=TerrestrialReferenceTemperature, &
+             &  iverbose=config%iverbosesetup, lacc=lacc)
+        config%cloud_optics_lw(jtype)%type_name = trim(config%cloud_type_name(jtype))
+      end if
+
+    end do
+
+    if (lhook) call dr_hook('radiation_general_cloud_optics:setup_general_cloud_optics',1,hook_handle)
+
+  end subroutine setup_general_cloud_optics_GPU
+
+  subroutine general_cloud_optics_GPU(nlev,istartcol,iendcol, &
+       &  config, thermodynamics, cloud, & 
+       &  od_lw_cloud, ssa_lw_cloud, g_lw_cloud, &
+       &  od_sw_cloud, ssa_sw_cloud, g_sw_cloud, lacc)
+
+    use parkind1
+    use yomhook
+
+    use radiation_io
+    use radiation_config
+    use radiation_thermodynamics
+    use radiation_cloud
+    use radiation_constants
+    !use radiation_general_cloud_optics_data, only : general_cloud_optics_type
+
+    integer, intent(in) :: nlev               ! number of model levels
+    integer, intent(in) :: istartcol, iendcol ! range of columns to process
+    type(config_type), intent(in), target :: config
+    type(thermodynamics_type),intent(in)  :: thermodynamics
+    type(cloud_type),   intent(in)        :: cloud
+
+    ! Layer optical depth, single scattering albedo and g factor of
+    ! clouds in each longwave band, where the latter two
+    ! variables are only defined if cloud longwave scattering is
+    ! enabled (otherwise both are treated as zero).
+    real(jprb), dimension(config%n_bands_lw,nlev,istartcol:iendcol), intent(out) :: &
+         &   od_lw_cloud
+    real(jprb), dimension(config%n_bands_lw_if_scattering,nlev,istartcol:iendcol), &
+         &   intent(out) :: ssa_lw_cloud, g_lw_cloud
+
+    ! Layer optical depth, single scattering albedo and g factor of
+    ! clouds in each shortwave band
+    real(jprb), dimension(config%n_bands_sw,nlev,istartcol:iendcol), intent(out) :: &
+         &   od_sw_cloud, ssa_sw_cloud, g_sw_cloud
+
+    ! In-cloud water path of one cloud type (kg m-2)
+    real(jprb), dimension(istartcol:iendcol,nlev) :: water_path
+
+    integer :: jtype, jcol, jlev, jg
+
+    real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
+
+    if (lhook) call dr_hook('radiation_general_cloud_optics:general_cloud_optics',0,hook_handle)
+
+    if (config%iverbose >= 2) then
+      write(nulout,'(a)') 'Computing cloud absorption/scattering properties'
+    end if
+
+    ! Array-wise assignment
+    od_lw_cloud  = 0.0_jprb
+    od_sw_cloud  = 0.0_jprb
+    ssa_sw_cloud = 0.0_jprb
+    g_sw_cloud   = 0.0_jprb
+    if (config%do_lw_cloud_scattering) then
+      ssa_lw_cloud = 0.0_jprb
+      g_lw_cloud   = 0.0_jprb
+    end if
+
+    ! Loop over cloud types
+    do jtype = 1,config%n_cloud_types
+      ! Compute in-cloud water path
+      if (config%is_homogeneous) then
+        water_path = cloud%mixing_ratio(istartcol:iendcol,:,jtype) &
+             &  *  (thermodynamics%pressure_hl(istartcol:iendcol, 2:nlev+1) &
+             &     -thermodynamics%pressure_hl(istartcol:iendcol, 1:nlev)) &
+             &  * (1.0_jprb / AccelDueToGravity)
+      else
+        water_path = cloud%mixing_ratio(istartcol:iendcol,:,jtype) &
+             &  *  (thermodynamics%pressure_hl(istartcol:iendcol, 2:nlev+1) &
+             &     -thermodynamics%pressure_hl(istartcol:iendcol, 1:nlev)) &
+             &  * (1.0_jprb / (AccelDueToGravity &
+             &                 * max(config%cloud_fraction_threshold, &
+             &                       cloud%fraction(istartcol:iendcol,:))))
+      end if
+
+      ! Add optical properties to the cumulative total for the
+      ! longwave and shortwave
+      if (config%do_lw) then
+        ! For the moment, we use ssa_lw_cloud and g_lw_cloud as
+        ! containers for scattering optical depth and scattering
+        ! coefficient x asymmetry factor, then scale after
+        if (config%do_lw_cloud_scattering) then
+          call config%cloud_optics_lw(jtype)%add_optical_properties_GPU(config%n_bands_lw, nlev, &
+               &  iendcol+1-istartcol, cloud%fraction(istartcol:iendcol,:), &
+               &  water_path, cloud%effective_radius(istartcol:iendcol,:,jtype), &
+               &  od_lw_cloud, ssa_lw_cloud, g_lw_cloud, lacc=lacc)
+        else
+          call config%cloud_optics_lw(jtype)%add_optical_properties_GPU(config%n_bands_lw, nlev, &
+               &  iendcol+1-istartcol, cloud%fraction(istartcol:iendcol,:), &
+               &  water_path, cloud%effective_radius(istartcol:iendcol,:,jtype), od_lw_cloud, lacc=lacc)
+        end if
+      end if
+      
+      if (config%do_sw) then
+        ! For the moment, we use ssa_sw_cloud and g_sw_cloud as
+        ! containers for scattering optical depth and scattering
+        ! coefficient x asymmetry factor, then scale after
+        call config%cloud_optics_sw(jtype)%add_optical_properties_GPU(config%n_bands_sw, nlev, &
+             &  iendcol+1-istartcol, cloud%fraction(istartcol:iendcol,:), &
+             &  water_path, cloud%effective_radius(istartcol:iendcol,:,jtype), &
+             &  od_sw_cloud, ssa_sw_cloud, g_sw_cloud, lacc=lacc)
+      end if
+    end do
+
+    ! Scale the combined longwave optical properties
+    if (config%do_lw_cloud_scattering) then
+      do jcol = istartcol, iendcol
+        do jlev = 1,nlev
+          if (cloud%fraction(jcol,jlev) > 0.0_jprb) then
+            ! Note that original cloud optics does not do
+            ! delta-Eddington scaling for liquid clouds in longwave
+            call delta_eddington_extensive(od_lw_cloud(:,jlev,jcol), &
+                 &  ssa_lw_cloud(:,jlev,jcol), g_lw_cloud(:,jlev,jcol))
+            
+            ! Scale to get asymmetry factor and single scattering albedo
+            g_lw_cloud(:,jlev,jcol) = g_lw_cloud(:,jlev,jcol) &
+                 &  / max(ssa_lw_cloud(:,jlev,jcol), 1.0e-15_jprb)
+            ssa_lw_cloud(:,jlev,jcol) = ssa_lw_cloud(:,jlev,jcol) &
+                 &  / max(od_lw_cloud(:,jlev,jcol),  1.0e-15_jprb)
+          end if
+        end do
+      end do
+    end if
+    
+    ! Scale the combined shortwave optical properties
+    if (config%do_sw) then
+      if (.not. config%do_sw_delta_scaling_with_gases) then
+        do jcol = istartcol, iendcol
+          do jlev = 1,nlev
+            if (cloud%fraction(jcol,jlev) > 0.0_jprb) then
+              call delta_eddington_extensive(od_sw_cloud(:,jlev,jcol), &
+                   &  ssa_sw_cloud(:,jlev,jcol), g_sw_cloud(:,jlev,jcol))
+            end if
+          end do
+        end do
+      end if
+
+      do jcol = istartcol, iendcol
+        do jlev = 1,nlev
+          if (cloud%fraction(jcol,jlev) > 0.0_jprb) then
+            ! Scale to get asymmetry factor and single scattering albedo
+            do jg = 1, config%n_bands_sw
+              g_sw_cloud(jg,jlev,jcol) = g_sw_cloud(jg,jlev,jcol) &
+                 &  / max(ssa_sw_cloud(jg,jlev,jcol), 1.0e-15_jprb)
+              ssa_sw_cloud(jg,jlev,jcol) = ssa_sw_cloud(jg,jlev,jcol) &
+                 &  / max(od_sw_cloud(jg,jlev,jcol),  1.0e-15_jprb)
+            end do
+          end if
+        end do
+      end do
+    end if
+
+    if (lhook) call dr_hook('radiation_general_cloud_optics:general_cloud_optics',1,hook_handle)
+
+  end subroutine general_cloud_optics_GPU
+
+  subroutine save_general_cloud_optics_GPU(config, file_prefix, iverbose, lacc)
+
+    use yomhook
+    use easy_netcdf
+    use radiation_config
+    
+    type(config_type),  intent(in) :: config
+    character(len=*),   intent(in) :: file_prefix
+    integer,  optional, intent(in) :: iverbose
+
+    integer :: jtype
+
+    real(jphook) :: hook_handle
+    logical, intent (in) :: lacc
+
+    if (lhook) call dr_hook('radiation_general_cloud_optics:save',0,hook_handle)
+
+    do jtype = 1,config%n_cloud_types
+      if (config%do_sw) then
+        associate(co_sw => config%cloud_optics_sw(jtype))
+          call co_sw%save_GPU(file_prefix//"_sw_" &
+               &          //trim(co_sw%type_name)//".nc", iverbose, lacc=lacc)
+        end associate
+      end if
+
+      if (config%do_lw) then
+        associate(co_lw => config%cloud_optics_lw(jtype))
+          call co_lw%save_GPU(file_prefix//"_lw_" &
+               &          //trim(co_lw%type_name)//".nc", iverbose, lacc=lacc)
+        end associate
+      end if
+    end do
+    
+    if (lhook) call dr_hook('radiation_general_cloud_optics:save',1,hook_handle)
+
+  end subroutine save_general_cloud_optics_GPU
+
+  subroutine setup_general_cloud_optics_CPU(config)
+
+    use parkind1
+    use yomhook
+
+    use radiation_io
+    use radiation_config
+    use radiation_spectral_definition
 
     type(config_type), intent(inout) :: config
 
@@ -101,7 +406,7 @@ contains
         if (config%iverbosesetup >= 2) then
           write(nulout,'(a,i0,a)') 'Shortwave cloud type ', jtype, ':'
         end if
-        call config%cloud_optics_sw(jtype)%setup(file_name, &
+        call config%cloud_optics_sw(jtype)%setup_CPU(file_name, &
              &  config%gas_optics_sw%spectral_def, &
              &  use_bands=(.not. config%do_cloud_aerosol_per_sw_g_point), &
              &  use_thick_averaging=config%use_thick_cloud_spectral_averaging(jtype), &
@@ -114,7 +419,7 @@ contains
         if (config%iverbosesetup >= 2) then
           write(nulout,'(a,i0,a)') 'Longwave cloud type ', jtype, ':'
         end if
-        call config%cloud_optics_lw(jtype)%setup(file_name, &
+        call config%cloud_optics_lw(jtype)%setup_CPU(file_name, &
              &  config%gas_optics_lw%spectral_def, &
              &  use_bands=(.not. config%do_cloud_aerosol_per_lw_g_point), &
              &  use_thick_averaging=config%use_thick_cloud_spectral_averaging(jtype), &
@@ -127,23 +432,21 @@ contains
 
     if (lhook) call dr_hook('radiation_general_cloud_optics:setup_general_cloud_optics',1,hook_handle)
 
-  end subroutine setup_general_cloud_optics
+  end subroutine setup_general_cloud_optics_CPU
 
-  !---------------------------------------------------------------------
-  ! Compute cloud optical properties
-  subroutine general_cloud_optics(nlev,istartcol,iendcol, &
+  subroutine general_cloud_optics_CPU(nlev,istartcol,iendcol, &
        &  config, thermodynamics, cloud, & 
        &  od_lw_cloud, ssa_lw_cloud, g_lw_cloud, &
        &  od_sw_cloud, ssa_sw_cloud, g_sw_cloud)
 
-    use parkind1, only           : jprb
-    use yomhook,  only           : lhook, dr_hook, jphook
+    use parkind1
+    use yomhook
 
-    use radiation_io,     only : nulout
-    use radiation_config, only : config_type
-    use radiation_thermodynamics, only    : thermodynamics_type
-    use radiation_cloud, only             : cloud_type
-    use radiation_constants, only         : AccelDueToGravity
+    use radiation_io
+    use radiation_config
+    use radiation_thermodynamics
+    use radiation_cloud
+    use radiation_constants
     !use radiation_general_cloud_optics_data, only : general_cloud_optics_type
 
     integer, intent(in) :: nlev               ! number of model levels
@@ -213,12 +516,12 @@ contains
         ! containers for scattering optical depth and scattering
         ! coefficient x asymmetry factor, then scale after
         if (config%do_lw_cloud_scattering) then
-          call config%cloud_optics_lw(jtype)%add_optical_properties(config%n_bands_lw, nlev, &
+          call config%cloud_optics_lw(jtype)%add_optical_properties_CPU(config%n_bands_lw, nlev, &
                &  iendcol+1-istartcol, cloud%fraction(istartcol:iendcol,:), &
                &  water_path, cloud%effective_radius(istartcol:iendcol,:,jtype), &
                &  od_lw_cloud, ssa_lw_cloud, g_lw_cloud)
         else
-          call config%cloud_optics_lw(jtype)%add_optical_properties(config%n_bands_lw, nlev, &
+          call config%cloud_optics_lw(jtype)%add_optical_properties_CPU(config%n_bands_lw, nlev, &
                &  iendcol+1-istartcol, cloud%fraction(istartcol:iendcol,:), &
                &  water_path, cloud%effective_radius(istartcol:iendcol,:,jtype), od_lw_cloud)
         end if
@@ -228,7 +531,7 @@ contains
         ! For the moment, we use ssa_sw_cloud and g_sw_cloud as
         ! containers for scattering optical depth and scattering
         ! coefficient x asymmetry factor, then scale after
-        call config%cloud_optics_sw(jtype)%add_optical_properties(config%n_bands_sw, nlev, &
+        call config%cloud_optics_sw(jtype)%add_optical_properties_CPU(config%n_bands_sw, nlev, &
              &  iendcol+1-istartcol, cloud%fraction(istartcol:iendcol,:), &
              &  water_path, cloud%effective_radius(istartcol:iendcol,:,jtype), &
              &  od_sw_cloud, ssa_sw_cloud, g_sw_cloud)
@@ -285,17 +588,13 @@ contains
 
     if (lhook) call dr_hook('radiation_general_cloud_optics:general_cloud_optics',1,hook_handle)
 
-  end subroutine general_cloud_optics
+  end subroutine general_cloud_optics_CPU
 
+  subroutine save_general_cloud_optics_CPU(config, file_prefix, iverbose)
 
-  !---------------------------------------------------------------------
-  ! Save all the cloud optics look-up tables for sw/lw and for each
-  ! hydrometeor type
-  subroutine save_general_cloud_optics(config, file_prefix, iverbose)
-
-    use yomhook,     only : lhook, dr_hook, jphook
-    use easy_netcdf, only : netcdf_file
-    use radiation_config, only : config_type
+    use yomhook
+    use easy_netcdf
+    use radiation_config
     
     type(config_type),  intent(in) :: config
     character(len=*),   intent(in) :: file_prefix
@@ -310,14 +609,14 @@ contains
     do jtype = 1,config%n_cloud_types
       if (config%do_sw) then
         associate(co_sw => config%cloud_optics_sw(jtype))
-          call co_sw%save(file_prefix//"_sw_" &
+          call co_sw%save_CPU(file_prefix//"_sw_" &
                &          //trim(co_sw%type_name)//".nc", iverbose)
         end associate
       end if
 
       if (config%do_lw) then
         associate(co_lw => config%cloud_optics_lw(jtype))
-          call co_lw%save(file_prefix//"_lw_" &
+          call co_lw%save_CPU(file_prefix//"_lw_" &
                &          //trim(co_lw%type_name)//".nc", iverbose)
         end associate
       end if
@@ -325,6 +624,6 @@ contains
     
     if (lhook) call dr_hook('radiation_general_cloud_optics:save',1,hook_handle)
 
-  end subroutine save_general_cloud_optics
+  end subroutine save_general_cloud_optics_CPU
 
 end module radiation_general_cloud_optics
