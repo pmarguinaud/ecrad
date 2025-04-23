@@ -1,0 +1,1 @@
+rad4NN_inputs_2020010100_0c0.nc
