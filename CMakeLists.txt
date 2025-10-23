@@ -65,6 +65,12 @@ ecbuild_add_option(
     REQUIRED_PACKAGES "OpenMP COMPONENTS Fortran"
 )
 
+ecbuild_add_option(
+    FEATURE DRIVER
+    DEFAULT ON
+    DESCRIPTION "Build the driver programs"
+)
+
 set( _PRECISIONS "" )
 ecbuild_add_option(
     FEATURE DOUBLE_PRECISION
@@ -140,7 +146,9 @@ foreach( PREC IN LISTS _PRECISIONS )
     add_subdirectory(ifsrrtm ifsrrtm.${PREC})
     add_subdirectory(radiation radiation.${PREC})
     add_subdirectory(ifs ifs.${PREC})
-    add_subdirectory(driver driver.${PREC})
+    if( HAVE_DRIVER )
+        add_subdirectory(driver driver.${PREC})
+    endif()
 endforeach()
 
 # Include test directories only if tests are enabled (which is the default
