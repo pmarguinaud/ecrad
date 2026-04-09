@@ -22,7 +22,7 @@ USE PARKIND1 , ONLY : JPIM, JPRB
 USE YOMHOOK  , ONLY : LHOOK, DR_HOOK, JPHOOK
 USE YOMCST   , ONLY : RG
 USE PARRRTM  , ONLY : JPXSEC, JPINPX  
-USE YOMDYNCORE,ONLY : RPLRG
+USE YOMDYNCORE_ECRAD,ONLY : RPLRG
 
 !------------------------------Arguments--------------------------------
 
