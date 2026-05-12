@@ -67,18 +67,12 @@ contains
     call config%consolidate()
 
     ! Load the look-up tables from files in the specified directory
-    if (config%i_gas_model_sw == IGasModelMonochromatic) then
+    if (config%i_gas_model == IGasModelMonochromatic) then
       call setup_gas_optics_mono(config, trim(config%directory_name))
-    else
-      ! Note that we can run RRTMG and ECCKD for different parts of
-      ! the spectrum: the setup routines only configure the relevant
-      ! part.
-      if (config%i_gas_model_sw == IGasModelIFSRRTMG .or. config%i_gas_model_lw == IGasModelIFSRRTMG) then
-        call setup_gas_optics_rrtmg(config, trim(config%directory_name))
-      end if
-      if (config%i_gas_model_sw == IGasModelECCKD .or. config%i_gas_model_lw == IGasModelECCKD) then
-        call setup_gas_optics_ecckd(config)
-      end if
+    else if (config%i_gas_model == IGasModelIFSRRTMG) then
+      call setup_gas_optics_rrtmg(config, trim(config%directory_name))
+    else if (config%i_gas_model == IGasModelECCKD) then
+      call setup_gas_optics_ecckd(config)
     end if
 
     if (config%do_lw_aerosol_scattering &
@@ -127,7 +121,7 @@ contains
     end if
 
     if (config%do_clouds) then
-      if (config%i_gas_model_sw == IGasModelMonochromatic) then
+      if (config%i_gas_model == IGasModelMonochromatic) then
         !      call setup_cloud_optics_mono(config)
       elseif (config%use_general_cloud_optics) then
         call setup_general_cloud_optics(config)
@@ -137,7 +131,7 @@ contains
     end if
 
     if (config%use_aerosols) then
-      if (config%i_gas_model_sw == IGasModelMonochromatic) then
+      if (config%i_gas_model == IGasModelMonochromatic) then
 !        call setup_aerosol_optics_mono(config)
       else 
         call setup_aerosol_optics(config)
@@ -172,16 +166,12 @@ contains
     type(config_type), intent(in)    :: config
     type(gas_type),    intent(inout) :: gas
 
-    if (config%i_gas_model_sw == IGasModelMonochromatic) then
+    if (config%i_gas_model == IGasModelMonochromatic) then
       call set_gas_units_mono(gas)
-    elseif (config%i_gas_model_sw == IGasModelIFSRRTMG &
-         &  .or. config%i_gas_model_lw == IGasModelIFSRRTMG) then
-      ! Convert to mass-mixing ratio for RRTMG; note that ecCKD can
-      ! work with this but performs an internal scaling
-      call set_gas_units_ifs(gas)
-    else
-      ! Use volume mixing ratio preferred by ecCKD
+    elseif (config%i_gas_model == IGasModelECCKD) then
       call set_gas_units_ecckd(gas)
+    else
+      call set_gas_units_ifs(gas)
     end if
 
   end subroutine set_gas_units
@@ -205,7 +195,7 @@ contains
 
     use radiation_io,             only : nulout
     use radiation_config,         only : config_type, &
-         &   IGasModelMonochromatic, IGasModelIFSRRTMG, IGasModelECCKD, &
+         &   IGasModelMonochromatic, IGasModelIFSRRTMG, &
          &   ISolverMcICA, ISolverSpartacus, ISolverHomogeneous, &
          &   ISolverTripleclouds
     use radiation_single_level,   only : single_level_type
@@ -330,28 +320,23 @@ contains
       ! extinction due to Rayleigh scattering), Planck functions and
       ! incoming shortwave flux at each g-point, for the specified
       ! range of atmospheric columns
-      if (config%i_gas_model_sw == IGasModelMonochromatic) then
+      if (config%i_gas_model == IGasModelMonochromatic) then
         call gas_optics_mono(ncol,nlev,istartcol,iendcol, config, &
              &  single_level, thermodynamics, gas, lw_albedo, &
              &  od_lw, od_sw, ssa_sw, &
              &  planck_hl, lw_emission, incoming_sw)
+      else if (config%i_gas_model == IGasModelIFSRRTMG) then
+        call gas_optics_rrtmg(ncol,nlev,istartcol,iendcol, config, &
+             &  single_level, thermodynamics, gas, &
+             &  od_lw, od_sw, ssa_sw, lw_albedo=lw_albedo, &
+             &  planck_hl=planck_hl, lw_emission=lw_emission, &
+             &  incoming_sw=incoming_sw)
       else
-        if (config%i_gas_model_sw == IGasModelIFSRRTMG &
-             &   .or. config%i_gas_model_lw == IGasModelIFSRRTMG) then
-          call gas_optics_rrtmg(ncol,nlev,istartcol,iendcol, config, &
-               &  single_level, thermodynamics, gas, &
-               &  od_lw, od_sw, ssa_sw, lw_albedo=lw_albedo, &
-               &  planck_hl=planck_hl, lw_emission=lw_emission, &
-               &  incoming_sw=incoming_sw)
-        end if
-        if (config%i_gas_model_sw == IGasModelECCKD &
-             &   .or. config%i_gas_model_lw == IGasModelECCKD) then
-          call gas_optics_ecckd(ncol,nlev,istartcol,iendcol, config, &
-               &  single_level, thermodynamics, gas, &
-               &  od_lw, od_sw, ssa_sw, lw_albedo=lw_albedo, &
-               &  planck_hl=planck_hl, lw_emission=lw_emission, &
-               &  incoming_sw=incoming_sw)
-        end if
+        call gas_optics_ecckd(ncol,nlev,istartcol,iendcol, config, &
+             &  single_level, thermodynamics, gas, &
+             &  od_lw, od_sw, ssa_sw, lw_albedo=lw_albedo, &
+             &  planck_hl=planck_hl, lw_emission=lw_emission, &
+             &  incoming_sw=incoming_sw)
       end if
 
       if (config%do_clouds) then
@@ -364,7 +349,7 @@ contains
 
         ! Compute hydrometeor absorption/scattering properties in each
         ! shortwave and longwave band
-        if (config%i_gas_model_sw == IGasModelMonochromatic) then
+        if (config%i_gas_model == IGasModelMonochromatic) then
           call cloud_optics_mono(nlev, istartcol, iendcol, &
                &  config, thermodynamics, cloud, &
                &  od_lw_cloud, ssa_lw_cloud, g_lw_cloud, &
@@ -383,7 +368,7 @@ contains
       end if ! do_clouds
 
       if (config%use_aerosols) then
-        if (config%i_gas_model_sw == IGasModelMonochromatic) then
+        if (config%i_gas_model == IGasModelMonochromatic) then
 !          call add_aerosol_optics_mono(nlev,istartcol,iendcol, &
 !               &  config, thermodynamics, gas, aerosol, & 
 !               &  od_lw, ssa_lw, g_lw, od_sw, ssa_sw, g_sw)

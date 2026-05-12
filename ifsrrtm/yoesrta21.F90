@@ -1,16 +1,25 @@
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
 MODULE YOESRTA21
 
-USE PARKIND1  ,ONLY : JPIM     ,JPRB,JPRD
+USE PARKIND1  ,ONLY : JPRD, JPIM     ,JPRB
 
 IMPLICIT NONE
-
-PUBLIC
 
 SAVE
 
 !     -----------------------------------------------------------------
 !*    ** *YOESRTA21* - SRTM COEFFICIENTS FOR INTERVAL 21
 !     BAND 21:  6150-7700 cm-1 (low - H2O,CO2; high - H2O,CO2)
+!     F. Vana  05-Mar-2015  Support for single precision
+!     R. Hogan 15-Jul-2015  Bug fix: use 2nd EQUIVALENCE statement for RRTM*G* 
 !     -----------------------------------------------------------------
 
 INTEGER(KIND=JPIM), PARAMETER :: JPG = 16, NG21 = 16
@@ -29,6 +38,8 @@ REAL(KIND=JPRB) :: KBC(5,5,13:59,NG21),ABSB(1175,NG21)
 REAL(KIND=JPRB) :: SELFREFC(10,NG21)  ,FORREFC(4,NG21)
 REAL(KIND=JPRB) :: SFLUXREFC(NG21,9)
 
+! The second one selects the reduced number of gridpoints - to select
+! the first without changing other parts of the IFS is an error
 !EQUIVALENCE (KA(1,1,1,1),ABSA(1,1)), (KB(1,1,13,1),ABSB(1,1))
 EQUIVALENCE (KAC(1,1,1,1),ABSA(1,1)), (KBC(1,1,13,1),ABSB(1,1))
 

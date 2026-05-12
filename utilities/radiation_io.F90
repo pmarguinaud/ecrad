@@ -11,6 +11,7 @@
 !
 ! Author:  Robin Hogan
 ! Email:   r.j.hogan@ecmwf.int
+! License: see the COPYING file for details
 !
 !  This file provides an interface to the provision of file units used
 !  for logging (nulout and nulerr) and for reading data files
@@ -32,10 +33,13 @@ module radiation_io
   use yomlun_ecrad, only : nulout, nulerr
 
   implicit none
-  public
 
   ! This unit may be used for reading radiation configuration files,
-  ! but should be closed as soon as the file is read
+  ! but should be closed as soon as the file is read. Note that we
+  ! cannot read the value with the same name from
+  ! ifs/module/yomlun.F90 since that module is compiled after this
+  ! one. When the Fortran 2008 standard is more widely supported, the
+  ! NEWUNIT feature of OPEN could be used instead
   integer :: nulrad = 25
 
 contains
@@ -45,7 +49,6 @@ contains
   subroutine radiation_abort(text)
     character(len=*), intent(in), optional :: text
 
-#ifdef HAVE_FIAT
 #include "abor1.intfb.h"
 
     if (present(text)) then
@@ -53,23 +56,6 @@ contains
     else
       call abor1('Error in radiation scheme')
     end if
-#else
-
-    if (present(text)) then
-      write(nulerr,'(a)') text
-#ifdef __PGI
-      stop 1
-#else
-      error stop 1
-#endif
-    else
-#ifdef __PGI
-      stop 'Error in radiation scheme'
-#else
-      error stop 'Error in radiation scheme'
-#endif
-    end if
-#endif  /* HAVE_FIAT */
   end subroutine radiation_abort
 
 end module radiation_io

@@ -1,3 +1,12 @@
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
 SUBROUTINE SRTM_TAUMOL28 &
  & ( KIDIA   , KFDIA    , KLEV,&
  & P_FAC00   , P_FAC01  , P_FAC10   , P_FAC11,&
@@ -52,10 +61,10 @@ REAL(KIND=JPRB)   ,INTENT(IN)    :: PRMU0(KIDIA:KFDIA)
 !- from PRECISE             
 !- from PROFDATA             
 !- from SELF             
-INTEGER(KIND=JPIM) :: IG, IND0, IND1, JS, I_LAY, I_LAYSOLFR(KIDIA:KFDIA), I_NLAYERS, IPLON
+INTEGER(KIND=JPIM) :: IG, IND0, IND1, JS, I_LAY, I_LAYSOLFR, I_NLAYERS, IPLON
 
 REAL(KIND=JPRB) :: Z_FAC000, Z_FAC001, Z_FAC010, Z_FAC011, Z_FAC100, Z_FAC101,&
- & Z_FAC110, Z_FAC111, Z_FS, Z_SPECCOMB, Z_SPECMULT, Z_SPECPARM, &
+ & Z_FAC110, Z_FAC111, Z_FS, Z_SPECCOMB, Z_SPECMULT, Z_SPECPARM,&
  & Z_TAURAY  
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
@@ -120,14 +129,14 @@ DO I_LAY = 1, I_NLAYERS
   ENDDO
 ENDDO
 
-I_LAYSOLFR(:) = I_NLAYERS
+I_LAYSOLFR = I_NLAYERS
 
 DO I_LAY = 1, I_NLAYERS
   DO IPLON = KIDIA, KFDIA
     IF (PRMU0(IPLON) > 0.0_JPRB) THEN
       IF (I_LAY >= K_LAYTROP(IPLON)+1) THEN
         IF (K_JP(IPLON,I_LAY-1) < LAYREFFR .AND. K_JP(IPLON,I_LAY) >= LAYREFFR) &
-         & I_LAYSOLFR(IPLON) = I_LAY  
+         & I_LAYSOLFR = I_LAY  
         Z_SPECCOMB = P_COLO3(IPLON,I_LAY) + STRRAT*P_COLO2(IPLON,I_LAY)
         Z_SPECPARM = P_COLO3(IPLON,I_LAY)/Z_SPECCOMB 
         IF (Z_SPECPARM >= P_ONEMINUS(IPLON)) Z_SPECPARM = P_ONEMINUS(IPLON)
@@ -170,13 +179,8 @@ DO I_LAY = 1, I_NLAYERS
            & ) 
           !     &           + TAURAY
           !    SSA(LAY,IG) = TAURAY/TAUG(LAY,IG)
-          IF (I_LAY == I_LAYSOLFR(IPLON)) P_SFLUXZEN(IPLON,IG) = SFLUXREFC(IG,JS) &
+          IF (I_LAY == I_LAYSOLFR) P_SFLUXZEN(IPLON,IG) = SFLUXREFC(IG,JS) &
            & + Z_FS * (SFLUXREFC(IG,JS+1) - SFLUXREFC(IG,JS))  
-! The following actually improves this band by setting the solar
-! spectrum at each g point equal to what would be computed if
-! molecular oxygen was set to zero. But it is worse overall due to a
-! compensating error with the previous band 27.
-!          IF (I_LAY == I_LAYSOLFR) P_SFLUXZEN(IPLON,IG) = SFLUXREFC(IG,5)
           P_TAUR(IPLON,I_LAY,IG) = Z_TAURAY
         ENDDO
       ENDIF
@@ -185,6 +189,6 @@ DO I_LAY = 1, I_NLAYERS
 ENDDO
 
 !-----------------------------------------------------------------------
-IF (LHOOK) CALL DR_HOOK('SRTM_TAUMOL28',1,ZHOOK_HANDLE)
 
+IF (LHOOK) CALL DR_HOOK('SRTM_TAUMOL28',1,ZHOOK_HANDLE)
 END SUBROUTINE SRTM_TAUMOL28

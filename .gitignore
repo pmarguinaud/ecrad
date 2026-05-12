@@ -8,3 +8,4 @@ mod
 practical/data
 practical/ecrad
 /build*
+.vimgit/*

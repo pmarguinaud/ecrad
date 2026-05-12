@@ -1,10 +1,17 @@
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
 MODULE YOERRTO13
 
-USE PARKIND1  ,ONLY : JPIM     ,JPRB, JPRD
+USE PARKIND1  ,ONLY : JPRD, JPIM     ,JPRB
 
 IMPLICIT NONE
-
-PUBLIC
 
 SAVE
 
@@ -12,6 +19,7 @@ SAVE
 !*    ** *YOERRTO13* - RRTM ORIGINAL COEFFICIENTS FOR INTERVAL 13
 !     BAND 13:  2080-2250 cm-1 (low - H2O,N2O; high - nothing)
 !     ABozzo 201306 updated to rrtmg v4.85
+!     F. Vana  05-Mar-2015  Support for single precision
 !     -----------------------------------------------------------------
 
 INTEGER(KIND=JPIM), PARAMETER :: NO13 = 16

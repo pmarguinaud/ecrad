@@ -42,7 +42,7 @@ module radiation_gas
     ! 1.0e-6 is used to indicate the units are actually PPMV: need to
     ! multiply by 1e-6 to get mol/mol.
     real(jprb) :: scale_factor(NMaxGases) = 1.0_jprb
-
+    
     ! Mixing ratios of variable gases, dimensioned (ncol, nlev,
     ! NMaxGases)
     real(jprb), allocatable, dimension(:,:,:) :: mixing_ratio
@@ -61,7 +61,7 @@ module radiation_gas
     ! A list of length ntype of gases whose volume mixing ratios have
     ! been provided
     integer :: icode(NMaxGases) = 0
-
+    
    contains
      procedure :: allocate   => allocate_gas
      procedure :: deallocate => deallocate_gas
@@ -71,7 +71,6 @@ module radiation_gas
      procedure :: set_units  => set_units_gas
      procedure :: assert_units => assert_units_gas
      procedure :: get        => get_gas
-     procedure :: get_scaling
      procedure :: reverse    => reverse_gas
      procedure :: out_of_physical_bounds
   end type gas_type
@@ -121,7 +120,7 @@ contains
     if (allocated(this%mixing_ratio)) then
        deallocate(this%mixing_ratio)
     end if
-
+    
     this%iunits = 0
     this%scale_factor = 0.0_jprb
     this%is_present = .false.
@@ -353,9 +352,9 @@ contains
     class(gas_type),      intent(inout) :: this
     integer,              intent(in)    :: iunits
     integer,    optional, intent(in)    :: igas
-    real(jprb), optional, intent(in)    :: scale_factor
+    real(jprb), optional, intent(in)    :: scale_factor    
 
-    integer :: jg
+    integer :: ig
 
     ! Scaling factor to convert from old to new
     real(jprb) :: sf
@@ -386,7 +385,7 @@ contains
           sf = sf * AirMolarMass / GasMolarMass(igas)
         end if
         sf = sf * this%scale_factor(igas)
-
+        
         if (sf /= 1.0_jprb) then
           this%mixing_ratio(:,:,igas) = this%mixing_ratio(:,:,igas) * sf
         end if
@@ -396,55 +395,30 @@ contains
         this%scale_factor(igas) = new_sf
       end if
     else
-      do jg = 1,this%ntype
-        call this%set_units(iunits, igas=this%icode(jg), scale_factor=new_sf)
+      do ig = 1,this%ntype
+        call this%set_units(iunits, igas=this%icode(ig), scale_factor=new_sf)
       end do
     end if
 
   end subroutine set_units_gas
 
-  
-  !---------------------------------------------------------------------
-  ! Return a vector indicating the scaling that one would need to
-  ! apply to each gas in order to obtain the dimension units in
-  ! "iunits" (which can be IVolumeMixingRatio or IMassMixingRatio)
-  subroutine get_scaling(this, iunits, scaling)
-    class(gas_type), intent(in)  :: this
-    integer,         intent(in)  :: iunits
-    real(jprb),      intent(out) :: scaling(NMaxGases)
-    integer :: jg
-    
-    scaling = this%scale_factor
-    do jg = 1,NMaxGases
-      if (iunits == IMassMixingRatio .and. this%iunits(jg) == IVolumeMixingRatio) then
-        scaling(jg) = scaling(jg) * GasMolarMass(jg) / AirMolarMass
-      else if (iunits == IVolumeMixingRatio .and. this%iunits(jg) == IMassMixingRatio) then
-        scaling(jg) = scaling(jg) * AirMolarMass / GasMolarMass(jg)
-      end if
-    end do
-    
-  end subroutine get_scaling
 
-  
   !---------------------------------------------------------------------
   ! Assert that gas mixing ratio units are "iunits", applying to gas
   ! with ID "igas" if present, otherwise to all gases. Otherwise the
-  ! program will exit, except if the optional argument "istatus" is
-  ! provided in which case it will return true if the units are
-  ! correct and false if they are not. Optional argument scale factor
-  ! specifies any subsequent multiplication to apply; for PPMV one
-  ! would use iunits=IVolumeMixingRatio and scale_factor=1.0e6.
-  recursive subroutine assert_units_gas(this, iunits, igas, scale_factor, istatus)
+  ! program will exit. Otional argument scale factor specifies any
+  ! subsequent multiplication to apply; for PPMV one would use
+  ! iunits=IVolumeMixingRatio and scale_factor=1.0e6.
+  recursive subroutine assert_units_gas(this, iunits, igas, scale_factor)
+    
+    use radiation_io,   only : nulerr, radiation_abort    
 
-    use radiation_io,   only : nulerr, radiation_abort
+    class(gas_type),      intent(in) :: this
+    integer,              intent(in) :: iunits
+    integer,    optional, intent(in) :: igas
+    real(jprb), optional, intent(in) :: scale_factor    
 
-    class(gas_type),      intent(in)  :: this
-    integer,              intent(in)  :: iunits
-    integer,    optional, intent(in)  :: igas
-    real(jprb), optional, intent(in)  :: scale_factor
-    logical,    optional, intent(out) :: istatus
-
-    integer :: jg
+    integer :: ig
 
     real(jprb) :: sf
 
@@ -454,34 +428,22 @@ contains
       sf = 1.0_jprb
     end if
 
-    if (present(istatus)) then
-      istatus = .true.
-    end if
-    
     if (present(igas)) then
       if (this%is_present(igas)) then
         if (iunits /= this%iunits(igas)) then
-          if (present(istatus)) then
-            istatus = .false.
-          else
-            write(nulerr,'(a,a,a)') '*** Error: ', trim(GasName(igas)), &
-                 &  ' is not in the required units'
-            call radiation_abort()
-          end if
+          write(nulerr,'(a,a,a)') '*** Error: ', trim(GasName(igas)), &
+               &  ' is not in the required units'
+          call radiation_abort()
         else if (sf /= this%scale_factor(igas)) then
-          if (present(istatus)) then
-            istatus = .false.
-          else
-            write(nulerr,'(a,a,a,e12.4,a,e12.4)') '*** Error: ', GasName(igas), &
-                 &  ' scaling of ', this%scale_factor(igas), &
-                 &  ' does not match required ', sf
-            call radiation_abort()
-          end if
+          write(nulerr,'(a,a,a,e12.4,a,e12.4)') '*** Error: ', GasName(igas), &
+               &  ' scaling of ', this%scale_factor(igas), &
+               &  ' does not match required ', sf
+          call radiation_abort()
         end if
       end if
     else
-      do jg = 1,this%ntype
-        call this%assert_units(iunits, igas=this%icode(jg), scale_factor=sf, istatus=istatus)
+      do ig = 1,this%ntype
+        call this%assert_units(iunits, igas=this%icode(ig), scale_factor=sf)
       end do
     end if
 
@@ -541,7 +503,7 @@ contains
 
     if (.not. this%is_present(igas)) then
       mixing_ratio = 0.0_jprb
-    else
+    else 
       if (iunits == IMassMixingRatio &
            &   .and. this%iunits(igas) == IVolumeMixingRatio) then
         sf = sf * GasMolarMass(igas) / AirMolarMass
@@ -550,7 +512,7 @@ contains
         sf = sf * AirMolarMass / GasMolarMass(igas)
       end if
       sf = sf * this%scale_factor(igas)
-
+        
       if (sf /= 1.0_jprb) then
         mixing_ratio = this%mixing_ratio(i1:i2,:,igas) * sf
       else
@@ -568,7 +530,7 @@ contains
   ! data
   subroutine reverse_gas(this, istartcol, iendcol, gas_rev)
 
-    class(gas_type), intent(in) :: this
+    class(gas_type)             :: this
     integer,        intent(in)  :: istartcol, iendcol
     type(gas_type), intent(out) :: gas_rev
 
@@ -622,5 +584,5 @@ contains
     if (lhook) call dr_hook('radiation_gas:out_of_physical_bounds',1,hook_handle)
 
   end function out_of_physical_bounds
-
+  
 end module radiation_gas

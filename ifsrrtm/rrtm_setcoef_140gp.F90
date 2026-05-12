@@ -1,3 +1,12 @@
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
 SUBROUTINE RRTM_SETCOEF_140GP (KIDIA,KFDIA,KLEV,P_COLDRY,P_WBROAD,P_WKL,&
  & P_FAC00,P_FAC01,P_FAC10,P_FAC11,P_FORFAC,P_FORFRAC,K_INDFOR,K_JP,K_JT,K_JT1,&
  & P_COLH2O,P_COLCO2,P_COLO3,P_COLN2O,P_COLCH4, P_COLO2,P_CO2MULT, P_COLBRD, &

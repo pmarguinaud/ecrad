@@ -236,8 +236,7 @@ CONTAINS
       ENDIF
     ELSEIF (YDERAD%NICEOPT == 4) THEN
       RAD_CONFIG%I_ICE_MODEL = IICEMODELBARAN
-      IF (RAD_CONFIG%I_GAS_MODEL_SW == IGasModelECCKD &
-          .OR. RAD_CONFIG%I_GAS_MODEL_LW == IGasModelECCKD) THEN
+      IF (RAD_CONFIG%I_GAS_MODEL == IGasModelECCKD) THEN
         WRITE(NULERR,'(a,i0)') '*** Error: Baran ice optics unavailable with generalized cloud optics'
         CALL ABOR1('RADIATION_SETUP: error interpreting NICEOPT')
       ENDIF
@@ -521,7 +520,7 @@ CONTAINS
 
     ! Do we scale the incoming solar radiation in each band?
     IF (YDERAD%NSOLARSPECTRUM > 0 &
-       &  .AND. RAD_CONFIG%I_GAS_MODEL_SW == IGasModelIFSRRTMG) THEN
+       &  .AND. RAD_CONFIG%I_GAS_MODEL == IGasModelIFSRRTMG) THEN
       IF (RAD_CONFIG%N_BANDS_SW /= 14) THEN
         WRITE(NULERR,'(a,i0,a)') '*** Error: ', RAD_CONFIG%N_BANDS_SW, &
             &  ' shortwave bands but need 14 to apply spectral scaling'

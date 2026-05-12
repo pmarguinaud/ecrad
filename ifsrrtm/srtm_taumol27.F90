@@ -1,3 +1,12 @@
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
 SUBROUTINE SRTM_TAUMOL27 &
  & ( KIDIA   , KFDIA    , KLEV,&
  & P_FAC00   , P_FAC01  , P_FAC10   , P_FAC11,&
@@ -50,9 +59,10 @@ REAL(KIND=JPRB)   ,INTENT(IN)    :: PRMU0(KIDIA:KFDIA)
 !- from PRECISE             
 !- from PROFDATA             
 !- from SELF             
-INTEGER(KIND=JPIM) :: IG, IND0, IND1, I_LAY, I_LAYSOLFR(KIDIA:KFDIA), I_NLAYERS, IPLON
+INTEGER(KIND=JPIM) :: IG, IND0, IND1, I_LAY, I_LAYSOLFR, I_NLAYERS, IPLON
 
-REAL(KIND=JPRB) :: Z_TAURAY  
+REAL(KIND=JPRB) ::&
+ & Z_TAURAY  
 REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
 
 IF (LHOOK) CALL DR_HOOK('SRTM_TAUMOL27',0,ZHOOK_HANDLE)
@@ -87,14 +97,14 @@ DO I_LAY = 1, I_NLAYERS
   ENDDO
 ENDDO
 
-I_LAYSOLFR(:) = I_NLAYERS
+I_LAYSOLFR = I_NLAYERS
 
 DO I_LAY = 1, I_NLAYERS
   DO IPLON = KIDIA, KFDIA
     IF (PRMU0(IPLON) > 0.0_JPRB) THEN
       IF (I_LAY >= K_LAYTROP(IPLON)+1) THEN
         IF (K_JP(IPLON,I_LAY-1) < LAYREFFR .AND. K_JP(IPLON,I_LAY) >= LAYREFFR) &
-         & I_LAYSOLFR(IPLON) = I_LAY  
+         & I_LAYSOLFR = I_LAY  
         IND0 = ((K_JP(IPLON,I_LAY)-13)*5+(K_JT(IPLON,I_LAY)-1))*NSPB(27) + 1
         IND1 = ((K_JP(IPLON,I_LAY)-12)*5+(K_JT1(IPLON,I_LAY)-1))*NSPB(27) + 1
 
@@ -109,7 +119,7 @@ DO I_LAY = 1, I_NLAYERS
            & P_FAC11(IPLON,I_LAY) * ABSB(IND1+1,IG))  
           !     &          + TAURAY
           !    SSA(LAY,IG) = TAURAY/TAUG(LAY,IG)
-          IF (I_LAY == I_LAYSOLFR(IPLON)) P_SFLUXZEN(IPLON,IG) = SCALEKUR * SFLUXREFC(IG) 
+          IF (I_LAY == I_LAYSOLFR) P_SFLUXZEN(IPLON,IG) = SCALEKUR * SFLUXREFC(IG) 
           P_TAUR(IPLON,I_LAY,IG) = Z_TAURAY
         ENDDO
       ENDIF
@@ -118,6 +128,6 @@ DO I_LAY = 1, I_NLAYERS
 ENDDO
 
 !-----------------------------------------------------------------------
-IF (LHOOK) CALL DR_HOOK('SRTM_TAUMOL27',1,ZHOOK_HANDLE)
 
+IF (LHOOK) CALL DR_HOOK('SRTM_TAUMOL27',1,ZHOOK_HANDLE)
 END SUBROUTINE SRTM_TAUMOL27

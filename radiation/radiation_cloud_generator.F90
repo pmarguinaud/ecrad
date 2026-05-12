@@ -18,6 +18,7 @@
 ! Modifications
 !   2018-02-22  R. Hogan  Call masked version of PDF sampler for speed
 !   2020-03-31  R. Hogan  More vectorizable version of Exp-Ran
+!   2025-08-06  R. El Khatib Optimization
 
 module radiation_cloud_generator
 
@@ -36,7 +37,7 @@ contains
   ! reduce the Monte Carlo noise in profiles with low cloud cover.
   subroutine cloud_generator(ng, nlev, i_overlap_scheme, &
        &  iseed, frac_threshold, &
-       &  frac, overlap_param, decorrelation_scaling, &
+       &  frac, overlap_param, reverse_decorrelation_scaling, &
        &  fractional_std, pdf_sampler, &
        &  od_scaling, total_cloud_cover, &
        &  use_beta_overlap, use_vectorizable_generator)
@@ -73,7 +74,7 @@ contains
     real(jprb), intent(in)  :: overlap_param(nlev-1)
 
     ! Overlap parameter for internal inhomogeneities
-    real(jprb), intent(in)  :: decorrelation_scaling
+    real(jprb), intent(in)  :: reverse_decorrelation_scaling
 
     ! Fractional standard deviation at each layer
     real(jprb), intent(in)  :: fractional_std(nlev)
@@ -117,11 +118,11 @@ contains
     ! Seed for random number generator and stream for producing random
     ! numbers
     type(randomnumberstream) :: random_stream
-
+    
     ! First and last cloudy layers
     integer :: ibegin, iend
 
-    integer :: itrigger
+    integer, dimension(ng) :: itrigger
 
     ! Loop index for model level and g-point
     integer :: jlev, jg
@@ -165,7 +166,7 @@ contains
 
       ! Find range of cloudy layers
       jlev = 1
-      do while (frac(jlev) <= 0.0_jprb)
+      do while (frac(jlev) <= 0.0_jprb) 
         jlev = jlev + 1
       end do
       ibegin = jlev
@@ -182,7 +183,8 @@ contains
       do jlev = ibegin,iend-1
         if (overlap_param(jlev) > 0.0_jprb) then
           overlap_param_inhom(jlev) &
-               &  = overlap_param(jlev)**(1.0_jprb/decorrelation_scaling)
+              &  = overlap_param(jlev)**reverse_decorrelation_scaling
+
         end if
       end do
 
@@ -205,7 +207,7 @@ contains
 
         ! Compute ng random numbers to use to locate cloud top
         call uniform_distribution(rand_top, random_stream)
-
+        
         ! Loop over ng columns
         do jg = 1,ng
           ! Find the cloud top height corresponding to the current
@@ -215,21 +217,19 @@ contains
           do while (trigger > cum_cloud_cover(jlev) .and. jlev < iend)
             jlev = jlev + 1
           end do
-          itrigger = jlev
-
-          if (i_overlap_scheme /= IOverlapExponential) then
-            call generate_column_exp_ran(ng, nlev, jg, random_stream, pdf_sampler, &
-                 &  frac, pair_cloud_cover, &
-                 &  cum_cloud_cover, overhang, fractional_std, overlap_param_inhom, &
-                 &  itrigger, iend, od_scaling)
-          else
-            call generate_column_exp_exp(ng, nlev, jg, random_stream, pdf_sampler, &
-                 &  frac, pair_cloud_cover, &
-                 &  cum_cloud_cover, overhang, fractional_std, overlap_param_inhom, &
-                 &  itrigger, iend, od_scaling)
-          end if
-
+          itrigger(jg) = jlev
         end do
+        if (i_overlap_scheme /= IOverlapExponential) then
+            call generate_column_exp_ran(ng, nlev, random_stream, pdf_sampler, &
+                 &  frac, pair_cloud_cover, &
+                 &  cum_cloud_cover, overhang, fractional_std, overlap_param_inhom, &
+                 &  itrigger, iend, od_scaling)
+        else
+            call generate_column_exp_exp(ng, nlev, random_stream, pdf_sampler, &
+                 &  frac, pair_cloud_cover, &
+                 &  cum_cloud_cover, overhang, fractional_std, overlap_param_inhom, &
+                 &  itrigger, iend, od_scaling)
+        end if
 
       else
         ! Alternative generator (only for Exp-Ran overlap so far) that
@@ -259,7 +259,7 @@ contains
   ! Generate a column of optical depth scalings using
   ! exponential-random overlap (which includes maximum-random overlap
   ! as a limiting case)
-  subroutine generate_column_exp_ran(ng, nlev, ig, random_stream, pdf_sampler, &
+  subroutine generate_column_exp_ran(ng, nlev, random_stream, pdf_sampler, &
        &  frac, pair_cloud_cover, &
        &  cum_cloud_cover, overhang, fractional_std, overlap_param_inhom, &
        &  itrigger, iend, od_scaling)
@@ -273,7 +273,7 @@ contains
     implicit none
 
     ! Number of g points / columns, and number of current column
-    integer, intent(in) :: ng, ig
+    integer, intent(in) :: ng
 
     ! Number of levels
     integer, intent(in) :: nlev
@@ -297,13 +297,14 @@ contains
 
     ! Top of highest cloudy layer (in this subcolumn) and base of
     ! lowest
-    integer, intent(in) :: itrigger, iend
+    integer, intent(in), dimension(ng) :: itrigger
+    integer, intent(in) :: iend
 
     ! Optical depth scaling to output
     real(jprb), intent(inout), dimension(ng,nlev) :: od_scaling
 
     ! Height indices
-    integer :: jlev, jcloud
+    integer :: jlev, jcloud, ig
 
     ! Number of contiguous cloudy layers for which to compute optical
     ! depth scaling
@@ -315,7 +316,10 @@ contains
     logical :: do_fill_od_scaling
 
     real(jprb) :: rand_cloud(nlev)
-    real(jprb) :: rand_inhom1(nlev), rand_inhom2(nlev)
+    real(jprb),pointer :: rand_inhom1(:), rand_inhom2(:)
+    real(jprb),target :: rand_inhom(2*nlev)
+
+    do ig = 1,ng
 
     ! So far our vertically contiguous cloud contains only one layer
     n_layers_to_scale = 1
@@ -323,11 +327,11 @@ contains
 
     ! Locate the clouds below this layer: first generate some more
     ! random numbers
-    call uniform_distribution(rand_cloud(1:(iend+1-itrigger)),random_stream)
+    call uniform_distribution(rand_cloud(1:(iend+1-itrigger(ig))),random_stream)
 
     ! Loop from the layer below the local cloud top down to the
     ! bottom-most cloudy layer
-    do jlev = itrigger+1,iend+1
+    do jlev = itrigger(ig)+1,iend+1
       do_fill_od_scaling = .false.
       if (jlev <= iend) then
         iy = iy+1
@@ -338,7 +342,7 @@ contains
                &  < frac(jlev) + frac(jlev-1) - pair_cloud_cover(jlev-1)) then
             ! Add another cloudy layer
             n_layers_to_scale = n_layers_to_scale + 1
-          else
+          else 
             ! Reached the end of a contiguous set of cloudy layers and
             ! will compute the optical depth scaling immediately.
             do_fill_od_scaling = .true.
@@ -362,8 +366,10 @@ contains
         ! We have a contiguous range of layers for which we
         ! compute the od_scaling elements using some random
         ! numbers
-        call uniform_distribution(rand_inhom1(1:n_layers_to_scale),random_stream)
-        call uniform_distribution(rand_inhom2(1:n_layers_to_scale),random_stream)
+        call uniform_distribution(rand_inhom(1:2*n_layers_to_scale),random_stream)
+        rand_inhom1 => rand_inhom(1:n_layers_to_scale)
+        rand_inhom2 => rand_inhom(n_layers_to_scale+1:n_layers_to_scale+n_layers_to_scale)
+
 
         ! Loop through the sequence of cloudy layers
         do jcloud = 2,n_layers_to_scale
@@ -376,7 +382,7 @@ contains
             rand_inhom1(jcloud) = rand_inhom1(jcloud-1)
           end if
         end do
-
+        
         ! Sample from a lognormal or gamma distribution to obtain
         ! the optical depth scalings
         call pdf_sampler%sample(fractional_std(jlev-n_layers_to_scale:jlev-1), &
@@ -384,8 +390,10 @@ contains
 
         n_layers_to_scale = 0
       end if
+          
+    end do ! jlev
 
-    end do
+    end do ! ig
 
   end subroutine generate_column_exp_ran
 
@@ -393,7 +401,7 @@ contains
   !---------------------------------------------------------------------
   ! Generate a column of optical depth scalings using
   ! exponential-exponential overlap
-  subroutine generate_column_exp_exp(ng, nlev, ig, random_stream, pdf_sampler, &
+  subroutine generate_column_exp_exp(ng, nlev, random_stream, pdf_sampler, &
        &  frac, pair_cloud_cover, &
        &  cum_cloud_cover, overhang, fractional_std, overlap_param_inhom, &
        &  itrigger, iend, od_scaling)
@@ -406,7 +414,7 @@ contains
     implicit none
 
     ! Number of g points / columns, and number of current column
-    integer, intent(in) :: ng, ig
+    integer, intent(in) :: ng
 
     ! Number of levels
     integer, intent(in) :: nlev
@@ -430,18 +438,20 @@ contains
 
     ! Top of highest cloudy layer (in this subcolumn) and base of
     ! lowest
-    integer, intent(in) :: itrigger, iend
+    integer, intent(in), dimension(ng) :: itrigger
+    integer, intent(in) :: iend
 
     ! Optical depth scaling to output
     real(jprb), intent(inout), dimension(ng,nlev) :: od_scaling
 
     ! Height indices
-    integer :: jlev, jcloud
+    integer :: jlev, jcloud, ig
 
     integer :: iy
 
     real(jprb) :: rand_cloud(nlev)
-    real(jprb) :: rand_inhom1(nlev), rand_inhom2(nlev)
+    real(jprb),pointer :: rand_inhom1(:), rand_inhom2(:)
+    real(jprb),target :: rand_inhom(2*nlev)
 
     ! For each column analysed, this vector locates the clouds. It is
     ! only actually used for Exp-Exp overlap
@@ -451,18 +461,20 @@ contains
     ! depth scaling
     integer :: n_layers_to_scale
 
+    do ig = 1,ng
+
     iy = 0
 
     is_cloudy = .false.
-    is_cloudy(itrigger) = .true.
+    is_cloudy(itrigger(ig)) = .true.
 
     ! Locate the clouds below this layer: first generate some more
     ! random numbers
-    call uniform_distribution(rand_cloud(1:(iend+1-itrigger)),random_stream)
+    call uniform_distribution(rand_cloud(1:(iend+1-itrigger(ig))),random_stream)
 
     ! Loop from the layer below the local cloud top down to the
     ! bottom-most cloudy layer
-    do jlev = itrigger+1,iend
+    do jlev = itrigger(ig)+1,iend
       iy = iy+1
       if (is_cloudy(jlev-1)) then
         ! There is a cloud above, in which case the probability
@@ -487,11 +499,12 @@ contains
     ! od_scaling elements using some random numbers
 
     ! In the Exp-Exp overlap scheme we do all layers at once
-    n_layers_to_scale = iend+1 - itrigger
-
-    call uniform_distribution(rand_inhom1(1:n_layers_to_scale),random_stream)
-    call uniform_distribution(rand_inhom2(1:n_layers_to_scale),random_stream)
-
+    n_layers_to_scale = iend+1 - itrigger(ig)
+        
+    call uniform_distribution(rand_inhom(1:2*n_layers_to_scale),random_stream)
+    rand_inhom1 => rand_inhom(1:n_layers_to_scale)
+    rand_inhom2 => rand_inhom(n_layers_to_scale+1:n_layers_to_scale+n_layers_to_scale)
+        
     ! Loop through the sequence of cloudy layers
     do jcloud = 2,n_layers_to_scale
       ! Use second random number, and inhomogeneity overlap
@@ -503,29 +516,32 @@ contains
         rand_inhom1(jcloud) = rand_inhom1(jcloud-1)
       end if
     end do
-
+        
     ! Sample from a lognormal or gamma distribution to obtain the
     ! optical depth scalings
 
     ! Masked version assuming values outside the range itrigger:iend
     ! are already zero:
     call pdf_sampler%masked_sample(n_layers_to_scale, &
-         &  fractional_std(itrigger:iend), &
-         &  rand_inhom1(1:n_layers_to_scale), od_scaling(ig,itrigger:iend), &
-         &  is_cloudy(itrigger:iend))
-
+         &  fractional_std(itrigger(ig):iend), &
+         &  rand_inhom1(1:n_layers_to_scale), od_scaling(ig,itrigger(ig):iend), &
+         &  is_cloudy(itrigger(ig):iend))
+        
     ! ! IFS version:
-    ! !$omp simd
-    ! do jlev=itrigger,iend
+    ! !$omp simd 
+    ! do jlev=itrigger(ig),iend
     !    if (.not. is_cloudy(jlev)) then
     !       od_scaling(ig,jlev) = 0.0_jprb
     !    else
     !       call sample_from_pdf_simd(&
     !            pdf_sampler,fractional_std(jlev),&
-    !            rand_inhom1(jlev-itrigger+1), &
+    !            rand_inhom1(jlev-itrigger(ig)+1), &
     !            od_scaling(ig,jlev))
     !    end if
     ! end do
+
+    end do ! ig
+
 
   end subroutine generate_column_exp_exp
 
@@ -535,45 +551,45 @@ contains
   ! standard deviation "fsd" corresponding to the cumulative
   ! distribution function value "cdf", and return it in x. Since this
   ! is an elemental subroutine, fsd, cdf and x may be arrays. SIMD version.
-  subroutine sample_from_pdf_simd(this, fsd, cdf, x)
-    use parkind1,              only : jprb
-    use radiation_pdf_sampler, only : pdf_sampler_type
-    implicit none
-#if defined(__GFORTRAN__) || defined(__PGI) || defined(__NEC__) || defined(__INTEL_LLVM_COMPILER)
-#else
-    !$omp declare simd(sample_from_pdf_simd) uniform(this) &
-    !$omp linear(ref(fsd)) linear(ref(cdf))
-#endif
-    type(pdf_sampler_type), intent(in)  :: this
-
-    ! Fractional standard deviation (0 to 4) and cumulative
-    ! distribution function (0 to 1)
-    real(jprb),              intent(in)  :: fsd, cdf
-
-    ! Sample from distribution
-    real(jprb),              intent(out) :: x
-
+!  subroutine sample_from_pdf_simd(this, fsd, cdf, x)
+!    use parkind1,              only : jprb
+!    use radiation_pdf_sampler, only : pdf_sampler_type
+!    implicit none
+!#if defined(__GFORTRAN__) || defined(__PGI) || defined(__NEC__)
+!#else
+!    !$omp declare simd(sample_from_pdf_simd) uniform(this) &
+!    !$omp linear(ref(fsd)) linear(ref(cdf))
+!#endif
+!    type(pdf_sampler_type), intent(in)  :: this
+!
+!    ! Fractional standard deviation (0 to 4) and cumulative
+!    ! distribution function (0 to 1)
+!    real(jprb),              intent(in)  :: fsd, cdf
+!
+!    ! Sample from distribution
+!    real(jprb),              intent(out) :: x
+!
     ! Index to look-up table
-    integer    :: ifsd, icdf
-
-    ! Weights in bilinear interpolation
-    real(jprb) :: wfsd, wcdf
-
-    ! Bilinear interpolation with bounds
-    wcdf = cdf * (this%ncdf-1) + 1.0_jprb
-    icdf = max(1, min(int(wcdf), this%ncdf-1))
-    wcdf = max(0.0_jprb, min(wcdf - icdf, 1.0_jprb))
-
-    wfsd = (fsd-this%fsd1) * this%inv_fsd_interval + 1.0_jprb
-    ifsd = max(1, min(int(wfsd), this%nfsd-1))
-    wfsd = max(0.0_jprb, min(wfsd - ifsd, 1.0_jprb))
-
-    x =      (1.0_jprb-wcdf)*(1.0_jprb-wfsd) * this%val(icdf  ,ifsd)   &
-         & + (1.0_jprb-wcdf)*          wfsd  * this%val(icdf  ,ifsd+1) &
-         & +           wcdf *(1.0_jprb-wfsd) * this%val(icdf+1,ifsd)   &
-         & +           wcdf *          wfsd  * this%val(icdf+1,ifsd+1)
-
-  end subroutine sample_from_pdf_simd
+!    integer    :: ifsd, icdf
+!
+!    ! Weights in bilinear interpolation
+!    real(jprb) :: wfsd, wcdf
+!
+!    ! Bilinear interpolation with bounds
+!    wcdf = cdf * (this%ncdf-1) + 1.0_jprb
+!    icdf = max(1, min(int(wcdf), this%ncdf-1))
+!    wcdf = max(0.0_jprb, min(wcdf - icdf, 1.0_jprb))
+!
+!    wfsd = (fsd-this%fsd1) * this%inv_fsd_interval + 1.0_jprb
+!    ifsd = max(1, min(int(wfsd), this%nfsd-1))
+!    wfsd = max(0.0_jprb, min(wfsd - ifsd, 1.0_jprb))
+!
+!    x =      (1.0_jprb-wcdf)*(1.0_jprb-wfsd) * this%val(icdf  ,ifsd)   &
+!         & + (1.0_jprb-wcdf)*          wfsd  * this%val(icdf  ,ifsd+1) &
+!         & +           wcdf *(1.0_jprb-wfsd) * this%val(icdf+1,ifsd)   &
+!         & +           wcdf *          wfsd  * this%val(icdf+1,ifsd+1)
+!
+!  end subroutine sample_from_pdf_simd
 
 
   !---------------------------------------------------------------------
@@ -723,7 +739,7 @@ contains
         is_cloud = .false.
       end if
     end do
-
+       
     ! Sample from a lognormal or gamma distribution to obtain the
     ! optical depth scalings, calling the faster masked version and
     ! assuming values outside the range ibegin:iend are already zero

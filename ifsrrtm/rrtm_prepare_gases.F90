@@ -1,3 +1,12 @@
+! (C) Copyright 2005- ECMWF.
+!
+! This software is licensed under the terms of the Apache Licence Version 2.0
+! which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+!
+! In applying this licence, ECMWF does not waive the privileges and immunities
+! granted to it by virtue of its status as an intergovernmental organisation
+! nor does it submit to any jurisdiction.
+!
 SUBROUTINE RRTM_PREPARE_GASES &
  &( KIDIA, KFDIA, KLON, KLEV, &
  &  PAPH , PAP , &
@@ -178,8 +187,7 @@ ENDDO
     PTAVEL(JL,JK) = PT(JL,KLEV-JK+1)
     PZ(JL,JK) = PAPH(JL,KLEV-JK+1)/100._JPRB
     PTZ(JL,JK) = PTH(JL,KLEV-JK+1)
-    ! RRTMG cannot cope with zero or negative water vapour
-    PWKL(JL,1,JK) = MAX(PQ(JL,KLEV-JK+1),1.0E-15)*ZAMD/ZAMW
+    PWKL(JL,1,JK) = PQ(JL,KLEV-JK+1)*ZAMD/ZAMW
     PWKL(JL,2,JK) = PCO2(JL,KLEV-JK+1)*ZAMD/ZAMCO2
     PWKL(JL,3,JK) = POZN(JL,KLEV-JK+1)*ZAMD/ZAMO
     PWKL(JL,4,JK) = PN2O(JL,KLEV-JK+1)*ZAMD/ZAMN2O

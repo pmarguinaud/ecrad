@@ -14,8 +14,6 @@
 ! License: see the COPYING file for details
 !
 
-#include "ecrad_config.h"
-
 module radiation_ecckd
 
   use parkind1, only : jprb
@@ -104,13 +102,7 @@ module radiation_ecckd
 
     procedure :: read => read_ckd_model
     procedure :: read_spectral_solar_cycle
-! Vectorized version of the optical depth look-up performs better on
-! NEC, but slower on x86
-#ifdef DWD_VECTOR_OPTIMIZATIONS
-    procedure :: calc_optical_depth => calc_optical_depth_ckd_model_vec
-#else
     procedure :: calc_optical_depth => calc_optical_depth_ckd_model
-#endif
     procedure :: print => print_ckd_model
     procedure :: calc_planck_function
     procedure :: calc_incoming_sw
@@ -126,13 +118,9 @@ contains
   ! "filename"
   subroutine read_ckd_model(this, filename, iverbose)
 
-#ifdef EASY_NETCDF_READ_MPI
-    use easy_netcdf_read_mpi, only : netcdf_file
-#else
-    use easy_netcdf,          only : netcdf_file
-#endif
+    use easy_netcdf_read_mpi,  only : netcdf_file
     !use radiation_io, only : nulerr, radiation_abort
-    use yomhook,              only : lhook, dr_hook, jphook
+    use yomhook,      only : lhook, dr_hook, jphook
 
     class(ckd_model_type), intent(inout) :: this
     character(len=*),      intent(in)    :: filename
@@ -294,13 +282,9 @@ contains
   ! solar cycle and map to g-points
   subroutine read_spectral_solar_cycle(this, filename, iverbose, use_updated_solar_spectrum)
 
-#ifdef EASY_NETCDF_READ_MPI
     use easy_netcdf_read_mpi, only : netcdf_file
-#else
-    use easy_netcdf,          only : netcdf_file
-#endif
-    use radiation_io,         only : nulout, nulerr, radiation_abort
-    use yomhook,              only : lhook, dr_hook, jphook
+    use radiation_io, only : nulout, nulerr, radiation_abort
+    use yomhook,      only : lhook, dr_hook, jphook
 
     ! Reference total solar irradiance (W m-2)
     real(jprb), parameter :: ReferenceTSI = 1361.0_jprb
@@ -456,7 +440,7 @@ contains
   ! at nlev layers
   subroutine calc_optical_depth_ckd_model(this, ncol, nlev, istartcol, iendcol, nmaxgas, &
        &  pressure_hl, temperature_fl, mole_fraction_fl, &
-       &  optical_depth_fl, rayleigh_od_fl, concentration_scaling)
+       &  optical_depth_fl, rayleigh_od_fl)
 
     use yomhook,             only : lhook, dr_hook, jphook
     use radiation_constants, only : AccelDueToGravity
@@ -472,8 +456,6 @@ contains
     real(jprb),            intent(in)  :: temperature_fl(istartcol:iendcol,nlev)
     ! Gas mole fractions at full levels (mol mol-1), dimensioned (ncol,nlev,nmaxgas)
     real(jprb),            intent(in)  :: mole_fraction_fl(ncol,nlev,nmaxgas)
-    ! Optional concentration scaling of each gas
-    real(jprb), optional,  intent(in)  :: concentration_scaling(nmaxgas)
     
     ! Output variables
 
@@ -494,7 +476,6 @@ contains
     !real(jprb) :: od_single_gas(this%ng)
 
     real(jprb) :: multiplier(nlev), simple_multiplier(nlev), global_multiplier, temperature1
-    real(jprb) :: scaling
 
     ! Indices and weights in temperature, pressure and concentration interpolation
     real(jprb) :: pindex1, tindex1, cindex1
@@ -556,10 +537,6 @@ contains
             molar_abs => this%single_gas(jgas)%molar_abs
             multiplier = simple_multiplier * mole_fraction_fl(jcol,:,igascode)
 
-            if (present(concentration_scaling)) then
-              multiplier = multiplier * concentration_scaling(igascode)
-            end if
-            
             do jlev = 1,nlev
               optical_depth_fl(:,jlev,jcol) = optical_depth_fl(:,jlev,jcol) &
                    &        + (multiplier(jlev)*tw1(jlev)) * (pw1(jlev) * molar_abs(:,ip1(jlev),it1(jlev)) &
@@ -570,16 +547,8 @@ contains
 
           case (IConcDependenceRelativeLinear)
             molar_abs => this%single_gas(jgas)%molar_abs
-
-            if (present(concentration_scaling)) then
-              multiplier = simple_multiplier &
-                   &  * (mole_fraction_fl(jcol,:,igascode)*concentration_scaling(igascode) &
-                   &     - single_gas%reference_mole_frac)
-            else
-              multiplier = simple_multiplier  * (mole_fraction_fl(jcol,:,igascode) &
-                   &                            - single_gas%reference_mole_frac)
-            end if
-            
+            multiplier = simple_multiplier  * (mole_fraction_fl(jcol,:,igascode) &
+                 &                            - single_gas%reference_mole_frac)
             do jlev = 1,nlev
               optical_depth_fl(:,jlev,jcol) = optical_depth_fl(:,jlev,jcol) &
                    &        + (multiplier(jlev)*tw1(jlev)) * (pw1(jlev) * molar_abs(:,ip1(jlev),it1(jlev)) &
@@ -600,19 +569,12 @@ contains
             end do
 
           case (IConcDependenceLUT)
-
-            if (present(concentration_scaling)) then
-              scaling = concentration_scaling(igascode)
-            else
-              scaling = 1.0_jprb
-            end if
-            
             ! Logarithmic interpolation in concentration space
             molar_abs_conc => this%single_gas(jgas)%molar_abs_conc
             mole_frac1 = exp(single_gas%log_mole_frac1)
             do jlev = 1,nlev
               ! Take care of mole_fraction == 0
-              log_conc = log(max(mole_fraction_fl(jcol,jlev,igascode)*scaling, mole_frac1))
+              log_conc = log(max(mole_fraction_fl(jcol,jlev,igascode), mole_frac1))
               cindex1  = (log_conc - single_gas%log_mole_frac1) / single_gas%d_log_mole_frac
               cindex1  = 1.0_jprb + max(0.0_jprb, min(cindex1, single_gas%n_mole_frac-1.0001_jprb))
               ic1(jlev) = int(cindex1)
@@ -629,7 +591,7 @@ contains
               !      &                       +pw2 * molar_abs_conc(:,ip1+1,it1+1,ic1+1)))
             do jlev = 1,nlev
               optical_depth_fl(:,jlev,jcol) = optical_depth_fl(:,jlev,jcol) &
-                   &  + (simple_multiplier(jlev) * mole_fraction_fl(jcol,jlev,igascode) * scaling) * ( &
+                   &  + (simple_multiplier(jlev) * mole_fraction_fl(jcol,jlev,igascode)) * ( &
                    &      (cw1(jlev) * tw1(jlev) * pw1(jlev)) * molar_abs_conc(:,ip1(jlev),it1(jlev),ic1(jlev)) &
                    &     +(cw1(jlev) * tw1(jlev) * pw2(jlev)) * molar_abs_conc(:,ip1(jlev)+1,it1(jlev),ic1(jlev)) &
                    &     +(cw1(jlev) * tw2(jlev) * pw1(jlev)) * molar_abs_conc(:,ip1(jlev),it1(jlev)+1,ic1(jlev)) &
@@ -662,236 +624,6 @@ contains
 
   end subroutine calc_optical_depth_ckd_model
 
-
-  !---------------------------------------------------------------------
-  ! Vectorized variant of above routine
-  subroutine calc_optical_depth_ckd_model_vec(this, ncol, nlev, istartcol, iendcol, nmaxgas, &
-       &  pressure_hl, temperature_fl, mole_fraction_fl, &
-       &  optical_depth_fl, rayleigh_od_fl)
-
-    use yomhook,             only : lhook, dr_hook, jphook
-    use radiation_constants, only : AccelDueToGravity
-
-    ! Input variables
-
-    class(ckd_model_type), intent(in), target  :: this
-    ! Number of columns, levels and input gases
-    integer,               intent(in)  :: ncol, nlev, nmaxgas, istartcol, iendcol
-    ! Pressure at half levels (Pa), dimensioned (ncol,nlev+1)
-    real(jprb),            intent(in)  :: pressure_hl(ncol,nlev+1)
-    ! Temperature at full levels (K), dimensioned (ncol,nlev)
-    real(jprb),            intent(in)  :: temperature_fl(istartcol:iendcol,nlev)
-    ! Gas mole fractions at full levels (mol mol-1), dimensioned (ncol,nlev,nmaxgas)
-    real(jprb),            intent(in)  :: mole_fraction_fl(ncol,nlev,nmaxgas)
-    
-    ! Output variables
-
-    ! Layer absorption optical depth for each g point
-    real(jprb),            intent(out) :: optical_depth_fl(this%ng,nlev,istartcol:iendcol)
-    ! In the shortwave only, the Rayleigh scattering optical depth
-    real(jprb),  optional, intent(out) :: rayleigh_od_fl(this%ng,nlev,istartcol:iendcol)
-
-    ! Local variables
-
-    real(jprb), pointer :: molar_abs(:,:,:), molar_abs_conc(:,:,:,:)
-
-    ! Natural logarithm of pressure at full levels
-    real(jprb) :: log_pressure_fl
-
-    ! Optical depth of single gas at one point in space versus
-    ! spectral interval
-    !real(jprb) :: od_single_gas(this%ng)
-
-    real(jprb) :: multiplier, simple_multiplier(ncol,nlev), global_multiplier, temperature1
-
-    ! Indices and weights in temperature, pressure and concentration interpolation
-    real(jprb) :: pindex1, tindex1, cindex1
-    real(jprb) :: pw1(ncol,nlev), pw2(ncol,nlev), tw1(ncol,nlev), tw2(ncol,nlev), cw1(ncol,nlev), cw2(ncol,nlev)
-    integer    :: ip1(ncol,nlev), it1(ncol,nlev), ic1(ncol,nlev)
-
-    ! Natural logarithm of mole fraction at one point
-    real(jprb) :: log_conc
-
-    ! Minimum mole fraction in look-up-table
-    real(jprb) :: mole_frac1
-
-    ! Layer absorption optical depth for each g point (memory layout adjusted to vectorization)
-    real(jprb) :: od_fl(ncol,this%ng,nlev)
-
-    integer :: jcol, jlev, jgas, igascode, jg
-
-    real(jphook) :: hook_handle
-
-    if (lhook) call dr_hook('radiation_ecckd:calc_optical_depth_vec',0,hook_handle)
-
-    global_multiplier = 1.0_jprb / (AccelDueToGravity * 0.001_jprb * AirMolarMass)
-
-    od_fl(:,:,:) = 0.0_jprb
-
-    do jlev = 1,nlev
-      do jcol = istartcol,iendcol
-
-        log_pressure_fl = log(0.5_jprb * (pressure_hl(jcol,jlev)+pressure_hl(jcol,jlev+1)))
-
-        ! Find interpolation points in pressure
-        pindex1 = (log_pressure_fl-this%log_pressure1) &
-             &    / this%d_log_pressure
-        pindex1 = 1.0_jprb + max(0.0_jprb, min(pindex1, this%npress-1.0001_jprb))
-        ip1(jcol,jlev) = int(pindex1)
-        pw2(jcol,jlev) = pindex1 - ip1(jcol,jlev)
-        pw1(jcol,jlev) = 1.0_jprb - pw2(jcol,jlev)
-
-        ! Find interpolation points in temperature
-        temperature1 = pw1(jcol,jlev)*this%temperature1(ip1(jcol,jlev)) &
-             &       + pw2(jcol,jlev)*this%temperature1(ip1(jcol,jlev)+1)
-        tindex1 = (temperature_fl(jcol,jlev) - temperature1) &
-             &    / this%d_temperature
-        tindex1 = 1.0_jprb + max(0.0_jprb, min(tindex1, this%ntemp-1.0001_jprb))
-        it1(jcol,jlev) = int(tindex1)
-        tw2(jcol,jlev) = tindex1 - it1(jcol,jlev)
-        tw1(jcol,jlev) = 1.0_jprb - tw2(jcol,jlev)
-
-        ! Concentration multiplier
-        simple_multiplier(jcol,jlev) = global_multiplier &
-             &  * (pressure_hl(jcol,jlev+1) - pressure_hl(jcol,jlev))
-      end do
-    end do
-
-    do jgas = 1,this%ngas
-
-      associate (single_gas => this%single_gas(jgas))
-        igascode = this%single_gas(jgas)%i_gas_code
-          
-        select case (single_gas%i_conc_dependence)
-            
-        case (IConcDependenceLinear)
-          molar_abs => this%single_gas(jgas)%molar_abs
-
-          do jlev = 1,nlev
-            do jg = 1, this%ng
-              do jcol = istartcol,iendcol
-                multiplier = simple_multiplier(jcol,jlev) * mole_fraction_fl(jcol,jlev,igascode)
-
-                od_fl(jcol,jg,jlev) = od_fl(jcol,jg,jlev) &
-                   &        + (multiplier*tw1(jcol,jlev)) * (pw1(jcol,jlev) * molar_abs(jg,ip1(jcol,jlev),it1(jcol,jlev)) &
-                   &                +pw2(jcol,jlev) * molar_abs(jg,ip1(jcol,jlev)+1,it1(jcol,jlev))) &
-                   &        + (multiplier*tw2(jcol,jlev)) * (pw1(jcol,jlev) * molar_abs(jg,ip1(jcol,jlev),it1(jcol,jlev)+1) &
-                   &                +pw2(jcol,jlev) * molar_abs(jg,ip1(jcol,jlev)+1,it1(jcol,jlev)+1))
-              end do
-            end do
-          end do
-
-        case (IConcDependenceRelativeLinear)
-          molar_abs => this%single_gas(jgas)%molar_abs
-
-          do jlev = 1,nlev
-            do jg = 1, this%ng
-              do jcol = istartcol,iendcol
-                multiplier = simple_multiplier(jcol,jlev)  * (mole_fraction_fl(jcol,jlev,igascode) &
-                   &                            - single_gas%reference_mole_frac)
-
-                od_fl(jcol,jg,jlev) = od_fl(jcol,jg,jlev) &
-                   &        + (multiplier*tw1(jcol,jlev)) * (pw1(jcol,jlev) * molar_abs(jg,ip1(jcol,jlev),it1(jcol,jlev)) &
-                   &                +pw2(jcol,jlev) * molar_abs(jg,ip1(jcol,jlev)+1,it1(jcol,jlev))) &
-                   &        + (multiplier*tw2(jcol,jlev)) * (pw1(jcol,jlev) * molar_abs(jg,ip1(jcol,jlev),it1(jcol,jlev)+1) &
-                   &                +pw2(jcol,jlev) * molar_abs(jg,ip1(jcol,jlev)+1,it1(jcol,jlev)+1))
-              end do
-            end do
-          end do
-
-        case (IConcDependenceNone)
-          ! Composite gases
-          molar_abs => this%single_gas(jgas)%molar_abs
-
-          do jlev = 1,nlev
-            do jg = 1, this%ng
-              do jcol = istartcol,iendcol
-                od_fl(jcol,jg,jlev) = od_fl(jcol,jg,jlev) &
-                   &        + (simple_multiplier(jcol,jlev)*tw1(jcol,jlev)) *   &
-                   &                (pw1(jcol,jlev) * molar_abs(jg,ip1(jcol,jlev),it1(jcol,jlev)) &
-                   &                +pw2(jcol,jlev) * molar_abs(jg,ip1(jcol,jlev)+1,it1(jcol,jlev))) &
-                   &        + (simple_multiplier(jcol,jlev)*tw2(jcol,jlev)) *   &
-                   &                (pw1(jcol,jlev) * molar_abs(jg,ip1(jcol,jlev),it1(jcol,jlev)+1) &
-                   &                +pw2(jcol,jlev) * molar_abs(jg,ip1(jcol,jlev)+1,it1(jcol,jlev)+1))
-              end do
-            end do
-          end do
-
-          case (IConcDependenceLUT)
-            ! Logarithmic interpolation in concentration space
-            molar_abs_conc => this%single_gas(jgas)%molar_abs_conc
-            mole_frac1 = exp(single_gas%log_mole_frac1)
-
-            do jlev = 1,nlev
-              do jcol = istartcol,iendcol
-                ! Take care of mole_fraction == 0
-                log_conc = log(max(mole_fraction_fl(jcol,jlev,igascode), mole_frac1))
-                cindex1  = (log_conc - single_gas%log_mole_frac1) / single_gas%d_log_mole_frac
-                cindex1  = 1.0_jprb + max(0.0_jprb, min(cindex1, single_gas%n_mole_frac-1.0001_jprb))
-                ic1(jcol,jlev) = int(cindex1)
-                cw2(jcol,jlev) = cindex1 - ic1(jcol,jlev)
-                cw1(jcol,jlev) = 1.0_jprb - cw2(jcol,jlev)
-              end do
-            end do
-
-          do jlev = 1,nlev
-            do jg = 1, this%ng
-!NEC$ select_vector
-              do jcol = istartcol,iendcol
-
-                od_fl(jcol,jg,jlev) = od_fl(jcol,jg,jlev) &
-                   &  + (simple_multiplier(jcol,jlev) * mole_fraction_fl(jcol,jlev,igascode)) * ( &
-                   &      (cw1(jcol,jlev) * tw1(jcol,jlev) * pw1(jcol,jlev)) * &
-                   &      molar_abs_conc(jg,ip1(jcol,jlev),it1(jcol,jlev),ic1(jcol,jlev)) &
-                   &     +(cw1(jcol,jlev) * tw1(jcol,jlev) * pw2(jcol,jlev)) * &
-                   &      molar_abs_conc(jg,ip1(jcol,jlev)+1,it1(jcol,jlev),ic1(jcol,jlev)) &
-                   &     +(cw1(jcol,jlev) * tw2(jcol,jlev) * pw1(jcol,jlev)) * &
-                   &      molar_abs_conc(jg,ip1(jcol,jlev),it1(jcol,jlev)+1,ic1(jcol,jlev)) &
-                   &     +(cw1(jcol,jlev) * tw2(jcol,jlev) * pw2(jcol,jlev)) * &
-                   &      molar_abs_conc(jg,ip1(jcol,jlev)+1,it1(jcol,jlev)+1,ic1(jcol,jlev)) &
-                   &     +(cw2(jcol,jlev) * tw1(jcol,jlev) * pw1(jcol,jlev)) * &
-                   &      molar_abs_conc(jg,ip1(jcol,jlev),it1(jcol,jlev),ic1(jcol,jlev)+1) &
-                   &     +(cw2(jcol,jlev) * tw1(jcol,jlev) * pw2(jcol,jlev)) * &
-                   &      molar_abs_conc(jg,ip1(jcol,jlev)+1,it1(jcol,jlev),ic1(jcol,jlev)+1) &
-                   &     +(cw2(jcol,jlev) * tw2(jcol,jlev) * pw1(jcol,jlev)) * &
-                   &      molar_abs_conc(jg,ip1(jcol,jlev),it1(jcol,jlev)+1,ic1(jcol,jlev)+1) &
-                   &     +(cw2(jcol,jlev) * tw2(jcol,jlev) * pw2(jcol,jlev)) * &
-                   &      molar_abs_conc(jg,ip1(jcol,jlev)+1,it1(jcol,jlev)+1,ic1(jcol,jlev)+1))
-              end do
-            end do
-          end do
-        end select
-            
-      end associate
-
-      ! Ensure the optical depth is not negative
-      do jcol = istartcol,iendcol
-        do jlev = 1,nlev
-          do jg = 1, this%ng
-            optical_depth_fl(jg,jlev,jcol) = max(0.0_jprb, od_fl(jcol,jg,jlev))
-          end do
-        end do
-      end do
-
-      ! Rayleigh scattering
-      if (this%is_sw .and. present(rayleigh_od_fl)) then
-        do jcol = istartcol,iendcol
-          do jlev = 1,nlev
-            do jg = 1, this%ng
-              rayleigh_od_fl(jg,jlev,jcol) = global_multiplier &
-               &  * (pressure_hl(jcol,jlev+1) - pressure_hl(jcol,jlev)) * this%rayleigh_molar_scat(jg)
-            end do
-          end do
-        end do
-      end if
-
-    end do
-
-    if (lhook) call dr_hook('radiation_ecckd:calc_optical_depth_vec',1,hook_handle)
-
-  end subroutine calc_optical_depth_ckd_model_vec
-
-  
   !---------------------------------------------------------------------
   ! Calculate the Planck function integrated across each of the g
   ! points of this correlated k-distribution model, for a given
