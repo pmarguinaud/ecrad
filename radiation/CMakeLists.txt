@@ -82,6 +82,8 @@ ecbuild_add_library(
         ecrad_utilities.${PREC}
         ifsrrtm.${PREC}
         $<${HAVE_OMP}:OpenMP::OpenMP_Fortran>
+    PUBLIC_LIBS
+        NetCDF::NetCDF_Fortran
 )
 
 add_library( ecrad::ecrad.${PREC} ALIAS ecrad.${PREC} )
